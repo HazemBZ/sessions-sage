@@ -7,7 +7,7 @@ Connect to OpenCode, pull session data, run it through an AI (Ollama + Gemma), a
 
 **How it works — at a glance:**
 
-![Lifecycle](sessions-sage-lifecycle.png)
+![Lifecycle](docs/sessions-sage-lifecycle.png)
 
 1. **Extract** — reads session data from OpenCode's database  
 2. **Summarize** — Ollama (running locally) generates readable summaries  
@@ -16,7 +16,19 @@ Connect to OpenCode, pull session data, run it through an AI (Ollama + Gemma), a
 
 ---
 
-### Tech stack
+## What it looks like
+
+**Dashboard** — overview of all sessions, searchable and filterable.
+
+![Dashboard](docs/dashboard.png)
+
+**Project view** — timeline of sessions grouped by project.
+
+![Projects](docs/projects.png)
+
+---
+
+## Tech stack
 
 | Piece | What |
 |---|---|
@@ -25,7 +37,7 @@ Connect to OpenCode, pull session data, run it through an AI (Ollama + Gemma), a
 | Database | SQLite |
 | Dashboard | HTML + HTMX (no JS framework) |
 
-### Quick start
+## Quick start
 
 ```bash
 make run
@@ -35,6 +47,16 @@ Opens at `http://localhost:8099`.
 
 ---
 
-### Project status
+## Project structure
+
+```
+├── app/              # FastAPI app (routes, templates, logic)
+├── docs/             # Documentation & screenshots
+├── Makefile          # run / stop commands
+├── pyproject.toml    # Python dependencies
+└── README.md
+```
+
+## Project status
 
 Active development.
