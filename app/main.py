@@ -1,0 +1,404 @@
+"""FastAPI app for Sessions-Sage dashboard."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, Form, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from app.config import CONFIG
+from app.db import SummaryDB
+from app.extractor import OpenCodeExtractor
+from app.scheduler import run_discussion_summaries, run_extraction, run_initial_import
+from app.summarizer import summarize_discussion_llm
+
+logger = logging.getLogger(__name__)
+
+# --- Globals ---
+summary_db: SummaryDB
+extractor: OpenCodeExtractor | None = None
+scheduler: BackgroundScheduler | None = None
+
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global summary_db, extractor, scheduler
+
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        stream=sys.stdout,
+    )
+
+    # Init DB
+    summary_db = SummaryDB(CONFIG.summaries_db)
+    summary_db.initialize()
+
+    # Schedule extraction
+    scheduler = BackgroundScheduler()
+
+    def _run_extraction():
+        global extractor
+        if not CONFIG.opencode_db_exists:
+            logger.warning("opencode.db not found at %s", CONFIG.opencode_db)
+            return
+        try:
+            if extractor is None:
+                extractor = OpenCodeExtractor(CONFIG.opencode_db)
+            summary_db.initialize()
+            count = summary_db.count_summaries()
+            if count == 0:
+                run_initial_import(extractor, summary_db)
+            else:
+                run_extraction(extractor, summary_db)
+        except Exception:
+            logger.exception("Extraction failed")
+
+    # Run initial import on startup (in background)
+    scheduler.add_job(_run_extraction, "interval", minutes=CONFIG.poll_interval_minutes, id="extract")
+
+    def _run_discussion():
+        if extractor is None:
+            return
+        try:
+            run_discussion_summaries(extractor, summary_db)
+        except Exception:
+            logger.exception("Discussion summary job failed")
+
+    scheduler.add_job(_run_discussion, "interval", minutes=2, id="discuss")
+    scheduler.start()
+
+    # Also run immediately
+    try:
+        _run_extraction()
+    except Exception:
+        logger.exception("Initial extraction failed")
+
+    # Start discussion summaries after a short delay (give extraction priority)
+    import threading
+    threading.Timer(30.0, _run_discussion).start()
+
+    yield
+
+    if scheduler:
+        scheduler.shutdown(wait=False)
+    if extractor:
+        extractor.close()
+
+
+app = FastAPI(title="Sessions-Sage", lifespan=lifespan)
+
+# Templates
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# Static
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# ---- Helper ----
+def _fmt_ts(ms: int) -> str:
+    if not ms:
+        return ""
+    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return dt.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _fmt_date(ms: int) -> str:
+    if not ms:
+        return ""
+    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return dt.strftime("%Y-%m-%d")
+
+
+def _fmt_duration(ms_start: int, ms_end: int) -> str:
+    if not ms_start or not ms_end:
+        return ""
+    secs = (ms_end - ms_start) // 1000
+    if secs < 60:
+        return f"{secs}s"
+    mins = secs // 60
+    secs = secs % 60
+    return f"{mins}m {secs}s" if secs else f"{mins}m"
+
+
+def _parse_json_list(val: Any) -> list[str]:
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        try:
+            return json.loads(val) if val else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
+# ---- Routes ----
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(
+    request: Request,
+    days: int = Query(default=7, ge=1, le=90),
+    search: str = Query(default=""),
+    project_id: str = Query(default=""),
+    agent: str = Query(default=""),
+    discussion: str = Query(default=""),
+):
+    stats = summary_db.get_stats()
+
+    sessions = summary_db.get_summaries(
+        limit=100,
+        days=days,
+        search=search or None,
+        project_id=project_id or None,
+        agent=agent or None,
+    )
+
+    if discussion == "done":
+        sessions = [s for s in sessions if s.get("discussion_summary")]
+    elif discussion == "pending":
+        sessions = [s for s in sessions if not s.get("discussion_summary")]
+
+    # Parse JSON fields for template
+    for s in sessions:
+        s["decisions_list"] = _parse_json_list(s.get("decisions"))
+        s["files_changed_list"] = _parse_json_list(s.get("files_changed"))
+        s["tools_used_list"] = _parse_json_list(s.get("tools_used"))
+        s["date"] = _fmt_date(s.get("time_created", 0))
+        s["duration"] = _fmt_duration(s.get("time_created", 0), s.get("time_updated", 0))
+        s["time_created_fmt"] = _fmt_ts(s.get("time_created", 0))
+        s["time_updated_fmt"] = _fmt_ts(s.get("time_updated", 0))
+        s["tokens_total"] = (s.get("tokens_input", 0) or 0) + (s.get("tokens_output", 0) or 0)
+        s["has_discussion"] = bool(s.get("discussion_summary"))
+
+    agents = summary_db.get_agents()
+    projects = summary_db.get_projects()
+    digests = summary_db.get_daily_digests(limit=14)
+
+    for d in digests:
+        d["projects_list"] = _parse_json_list(d.get("projects"))
+
+    return templates.TemplateResponse(request, "index.html", {
+        "stats": stats,
+        "sessions": sessions,
+        "agents": agents,
+        "projects": projects,
+        "digests": digests,
+        "days": days,
+        "search": search,
+        "selected_project": project_id,
+        "selected_agent": agent,
+        "total_sessions": summary_db.count_summaries(),
+        "selected_discussion": discussion,
+    })
+
+
+@app.get("/session/{session_id}", response_class=HTMLResponse)
+async def session_detail(request: Request, session_id: str):
+    summary = summary_db.get_summary(session_id)
+    if not summary:
+        return HTMLResponse("Session not found", status_code=404)
+
+    # Fetch raw data if available
+    raw_session = None
+    raw_messages = None
+    if extractor:
+        try:
+            raw_session = extractor.get_session(session_id)
+            raw_messages = extractor.get_messages(session_id)
+        except Exception:
+            pass
+
+    notes = summary_db.get_notes(session_id)
+
+    # Parse JSON fields
+    summary["decisions_list"] = _parse_json_list(summary.get("decisions"))
+    summary["files_changed_list"] = _parse_json_list(summary.get("files_changed"))
+    summary["tools_used_list"] = _parse_json_list(summary.get("tools_used"))
+    summary["time_created_fmt"] = _fmt_ts(summary.get("time_created", 0))
+    summary["time_updated_fmt"] = _fmt_ts(summary.get("time_updated", 0))
+    summary["duration"] = _fmt_duration(summary.get("time_created", 0), summary.get("time_updated", 0))
+    summary["date"] = _fmt_date(summary.get("time_created", 0))
+
+    # Child sessions
+    child_summaries = []
+    sid = summary.get("session_id", "")
+    if sid:
+        child_summaries = summary_db.get_summaries(parent_id=sid)
+
+    return templates.TemplateResponse(request, "session.html", {
+        "summary": summary,
+        "raw_session": raw_session,
+        "raw_messages": raw_messages,
+        "notes": notes,
+        "child_summaries": child_summaries,
+        "discussion_summary_enabled": True,
+    })
+
+
+@app.post("/session/{session_id}/note", response_class=HTMLResponse)
+async def add_note(request: Request, session_id: str, note: str = Form(...)):
+    if note.strip():
+        summary_db.add_note(session_id, note.strip())
+    # Redirect back to session page
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/session/{session_id}", status_code=303)
+
+
+@app.post("/session/{session_id}/regenerate-summary", response_class=HTMLResponse)
+async def regenerate_summary(request: Request, session_id: str):
+    """On-demand regenerate discussion summary for a session."""
+    global extractor
+
+    if not extractor:
+        return HTMLResponse("Extractor not available", status_code=503)
+
+    summary = summary_db.get_summary(session_id)
+    if not summary:
+        return HTMLResponse("Session not found", status_code=404)
+
+    try:
+        messages = extractor.get_messages(session_id)
+        parts = extractor.get_parts(session_id)
+
+        result = summarize_discussion_llm(
+            messages, parts,
+            ollama_url=CONFIG.ollama_url,
+            model=CONFIG.ollama_model,
+            max_msgs=CONFIG.discussion_max_messages,
+        )
+
+        if result:
+            summary_db.update_discussion_summary(
+                session_id, result, CONFIG.discussion_summary_version,
+            )
+        else:
+            summary_db.update_discussion_summary(session_id, "", 0)
+
+    except Exception:
+        logger.exception("Failed to regenerate summary for %s", session_id)
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/session/{session_id}", status_code=303)
+
+
+@app.get("/digests", response_class=HTMLResponse)
+async def digests_view(request: Request):
+    digests = summary_db.get_daily_digests(limit=60)
+    for d in digests:
+        d["projects_list"] = _parse_json_list(d.get("projects"))
+
+    return templates.TemplateResponse(request, "digests.html", {
+        "digests": digests,
+    })
+
+
+@app.get("/projects", response_class=HTMLResponse)
+async def projects_list(request: Request):
+    projects = summary_db.get_projects()
+    # Enrich with per-project stats
+    enriched = []
+    for pid, ppath, count in projects:
+        pstats = summary_db.get_project_stats(pid)
+        enriched.append({
+            "project_id": pid,
+            "project_path": ppath,
+            "session_count": count,
+            "discussion_done": pstats.get("discussion_done", 0),
+            "first_session": _fmt_ts(pstats.get("first_session", 0)),
+            "last_session": _fmt_ts(pstats.get("last_session", 0)),
+        })
+
+    return templates.TemplateResponse(request, "projects.html", {
+        "projects": enriched,
+        "total_sessions": summary_db.count_summaries(),
+    })
+
+
+@app.get("/project/{project_id}", response_class=HTMLResponse)
+async def project_detail(request: Request, project_id: str):
+    sessions = summary_db.get_project_sessions(project_id)
+    if not sessions:
+        return HTMLResponse("Project not found", status_code=404)
+
+    pstats = summary_db.get_project_stats(project_id)
+    project_name = sessions[0].get("project_path", project_id)
+    project_short = project_name.split("/")[-1] if project_name else project_id
+
+    # Parse JSON fields + format timestamps
+    for s in sessions:
+        s["decisions_list"] = _parse_json_list(s.get("decisions"))
+        s["files_changed_list"] = _parse_json_list(s.get("files_changed"))
+        s["tools_used_list"] = _parse_json_list(s.get("tools_used"))
+        s["time_created_fmt"] = _fmt_ts(s.get("time_created", 0))
+        s["time_updated_fmt"] = _fmt_ts(s.get("time_updated", 0))
+        s["duration"] = _fmt_duration(s.get("time_created", 0), s.get("time_updated", 0))
+        s["date"] = _fmt_date(s.get("time_created", 0))
+        s["has_discussion"] = bool(s.get("discussion_summary"))
+
+    return templates.TemplateResponse(request, "project.html", {
+        "sessions": sessions,
+        "project_name": project_name,
+        "project_short": project_short,
+        "project_path": project_name,
+        "project_id": project_id,
+        "stats": {
+            **pstats,
+            "first_session_fmt": _fmt_ts(pstats.get("first_session", 0)),
+            "last_session_fmt": _fmt_ts(pstats.get("last_session", 0)),
+        },
+        "total_sessions": summary_db.count_summaries(),
+    })
+
+
+@app.get("/api/stats")
+async def api_stats():
+    return summary_db.get_stats()
+
+
+@app.get("/api/sessions")
+async def api_sessions(
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0),
+    days: int = Query(default=0, ge=0),
+    search: str = Query(default=""),
+):
+    sessions = summary_db.get_summaries(
+        limit=limit,
+        offset=offset,
+        days=days or None,
+        search=search or None,
+    )
+    return {"sessions": sessions, "total": summary_db.count_summaries()}
+
+
+# ---- CLI entry point ----
+def run() -> None:
+    """Run the server."""
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=CONFIG.host,
+        port=CONFIG.port,
+        reload=False,
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    run()

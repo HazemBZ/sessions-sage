@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}{{ project_short }} — Sessions-Sage{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="/projects" class="btn-link">&larr; All Projects</a>
+        <h1 style="margin-top:4px">{{ project_short or project_id[:12] }}</h1>
+        <code class="project-dir-path">{{ project_path or project_id }}</code>
+    </div>
+    <div class="header-actions" style="flex-direction:column;align-items:flex-end;gap:4px">
+        <span class="badge badge-session">{{ stats.total_sessions }} sessions</span>
+        <span class="text-muted">{{ stats.discussion_done or 0 }}/{{ stats.total_sessions }} summarized</span>
+    </div>
+</div>
+
+<!-- Project info bar -->
+<div class="project-info-bar">
+    <div class="project-info-item project-info-dir">
+        <span class="project-info-label">Directory</span>
+        <code class="project-dir-path" style="margin-top:0;font-size:0.75rem">{{ stats.project_path or project_path or project_id }}</code>
+    </div>
+    <div class="project-info-item">
+        <span class="project-info-label">Timespan</span>
+        <span>{{ stats.first_session_fmt or '?' }} — {{ stats.last_session_fmt or '?' }}</span>
+    </div>
+    <div class="project-info-item">
+        <span class="project-info-label">Tokens</span>
+        <span>{{ "{:,.0f}".format((stats.total_tokens_input or 0) / 1_000_000) }}M in / {{ "{:,.0f}".format((stats.total_tokens_output or 0) / 1_000_000) }}M out</span>
+    </div>
+    <div class="project-info-item">
+        <span class="project-info-label">Cost</span>
+        <span>${{ "%.4f"|format(stats.total_cost or 0) }}</span>
+    </div>
+    <div class="project-info-item">
+        <span class="project-info-label">Agents</span>
+        <div class="project-info-agents">
+            {% for a in stats.agents or [] %}
+            <span class="badge badge-agent">{{ a.agent }} ({{ a.cnt }})</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Continuous discussion feed -->
+<div class="discussion-feed">
+    {% set ns = namespace(last_date='') %}
+    {% for s in sessions %}
+    {% set cur_date = s.date %}
+    {% if cur_date and cur_date != ns.last_date %}
+    <div class="feed-day-separator">
+        <span class="feed-day-label">{{ cur_date }}</span>
+    </div>
+    {% set ns.last_date = cur_date %}
+    {% endif %}
+
+    <div class="feed-entry">
+        <div class="feed-timeline">
+            <div class="feed-dot {% if s.has_discussion %}feed-dot-done{% else %}feed-dot-pending{% endif %}"></div>
+            <div class="feed-line"></div>
+        </div>
+        <div class="feed-card card">
+            <div class="feed-card-header">
+                <a href="/session/{{ s.session_id }}" class="feed-title">{{ s.title or s.goal[:100] or s.session_id[:20] }}</a>
+                <div class="feed-meta">
+                    <span class="badge badge-agent">{{ s.agent or '?' }}</span>
+                    <span class="text-muted">{{ s.time_created_fmt }}</span>
+                    {% if s.duration %}
+                    <span class="text-muted">{{ s.duration }}</span>
+                    {% endif %}
+                    {% if s.has_discussion %}
+                    <span class="badge badge-discussion-done">Summarized</span>
+                    {% else %}
+                    <span class="badge badge-discussion-pending">Pending</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="feed-card-body">
+                {% if s.goal %}
+                <div class="feed-goal">
+                    <span class="feed-goal-label">Goal:</span>
+                    {{ s.goal[:300] }}{% if s.goal|length > 300 %}...{% endif %}
+                </div>
+                {% endif %}
+
+                {% if s.discussion_summary %}
+                <div class="feed-discussion">
+                    {{ s.discussion_summary }}
+                </div>
+                {% endif %}
+
+                {% if s.decisions_list %}
+                <div class="feed-decisions">
+                    <span class="feed-decisions-label">Decisions:</span>
+                    <ul>
+                        {% for d in s.decisions_list[:5] %}
+                        <li>{{ d[:150] }}{% if d|length > 150 %}...{% endif %}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                {% if s.files_changed_list %}
+                <div class="feed-files">
+                    {% for f in s.files_changed_list[:8] %}
+                    <code class="file-path">{{ f.split('/')[-1] }}</code>
+                    {% endfor %}
+                    {% if s.files_changed_list|length > 8 %}
+                    <span class="text-muted">+{{ s.files_changed_list|length - 8 }} more</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

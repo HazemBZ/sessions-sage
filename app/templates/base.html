@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sessions-Sage{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="/static/main.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">Sessions-Sage</a>
+            <div class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/projects">Projects</a>
+                <a href="/digests">Daily Digests</a>
+            </div>
+            <div class="nav-info">
+                <span class="badge badge-session" id="session-count">{{ total_sessions }} sessions</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="nav-inner">
+            <span>Sessions-Sage — OpenCode session reflection tool</span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Sessions-Sage{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Session Dashboard</h1>
+    <div class="header-actions">
+        <form method="get" class="filter-bar">
+            <input type="text" name="search" placeholder="Search sessions..." value="{{ search }}" class="input">
+            <select name="days" class="input" onchange="this.form.submit()">
+                <option value="1" {% if days == 1 %}selected{% endif %}>Last 24h</option>
+                <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+                <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+            </select>
+            <select name="agent" class="input" onchange="this.form.submit()">
+                <option value="">All agents</option>
+                {% for agent, count in agents %}
+                <option value="{{ agent }}" {% if selected_agent == agent %}selected{% endif %}>{{ agent }} ({{ count }})</option>
+                {% endfor %}
+            </select>
+            <select name="discussion" class="input" onchange="this.form.submit()">
+                <option value="">All discussions</option>
+                <option value="done" {% if selected_discussion == 'done' %}selected{% endif %}>With summary</option>
+                <option value="pending" {% if selected_discussion == 'pending' %}selected{% endif %}>Pending</option>
+            </select>
+            <button type="submit" class="btn">Filter</button>
+        </form>
+    </div>
+</div>
+
+<!-- Stats cards -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_sessions or 0 }}</div>
+        <div class="stat-label">Total Sessions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "{:,.0f}".format((stats.total_tokens_input or 0) / 1_000_000) }}M</div>
+        <div class="stat-label">Input Tokens</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "{:,.0f}".format((stats.total_tokens_output or 0) / 1_000_000) }}M</div>
+        <div class="stat-label">Output Tokens</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_user_msgs or 0 }}</div>
+        <div class="stat-label">User Messages</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_assistant_msgs or 0 }}</div>
+        <div class="stat-label">Assistant Messages</div>
+    </div>
+    <div class="stat-card stat-card-discussion">
+        <div class="stat-value">
+            {{ stats.discussion_done or 0 }}<span class="stat-sep">/</span>{{ (stats.discussion_done or 0) + (stats.discussion_pending or 0) }}
+        </div>
+        <div class="stat-label">Discussion Summaries</div>
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" style="width:{% if (stats.discussion_done or 0) + (stats.discussion_pending or 0) > 0 %}{{ (stats.discussion_done / ((stats.discussion_done or 0) + (stats.discussion_pending or 0)) * 100)|round(1) }}{% else %}0{% endif %}%"></div>
+        </div>
+        <div class="stat-sub">{{ stats.discussion_pending or 0 }} pending</div>
+    </div>
+</div>
+
+<!-- Daily digests mini -->
+{% if digests %}
+<section class="card">
+    <div class="card-header">
+        <h2>Daily Activity</h2>
+        <a href="/digests" class="btn-link">View all →</a>
+    </div>
+    <div class="digest-mini">
+        {% for d in digests[:7] %}
+        <div class="digest-day">
+            <div class="digest-date">{{ d.date }}</div>
+            <div class="digest-count">{{ d.session_count }} sessions</div>
+            <div class="digest-tokens">{{ "{:,.0f}".format((d.total_tokens_input or 0) / 1_000_000) }}M in</div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<!-- Session list -->
+<section class="card">
+    <div class="card-header">
+        <h2>Recent Sessions</h2>
+        <span class="text-muted">{{ sessions|length }} sessions ({{ days }} day{% if days != 1 %}s{% endif %})</span>
+    </div>
+
+    {% if sessions %}
+    <div class="session-list">
+        {% for s in sessions %}
+        <div class="session-row" onclick="window.location='/session/{{ s.session_id }}'" style="cursor:pointer">
+            <div class="session-main">
+                <div class="session-title">{{ s.title or s.goal[:100] or 'Untitled' }}</div>
+                <div class="session-meta">
+                    <span class="badge badge-agent">{{ s.agent or '?' }}</span>
+                    {% if s.has_discussion %}
+                    <span class="badge badge-discussion-done" title="Discussion summary available">Summarized</span>
+                    {% else %}
+                    <span class="badge badge-discussion-pending" title="Discussion summary pending">Pending</span>
+                    {% endif %}
+                    {% if s.project_path %}
+                    <span class="badge badge-project">{{ s.project_path.split('/')[-1] or s.project_path }}</span>
+                    {% endif %}
+                    <span class="text-muted">{{ s.time_created_fmt }}</span>
+                    {% if s.duration %}
+                    <span class="text-muted">{{ s.duration }}</span>
+                    {% endif %}
+                </div>
+                {% if s.goal %}
+                <div class="session-goal">{{ s.goal[:200] }}{% if s.goal|length > 200 %}...{% endif %}</div>
+                {% endif %}
+            </div>
+            <div class="session-side">
+                <div class="session-tokens">
+                    <span class="token-input">{{ "{:,.0f}".format(s.tokens_input / 1000) }}k</span>
+                    <span class="token-arrow">→</span>
+                    <span class="token-output">{{ "{:,.0f}".format(s.tokens_output / 1000) }}k</span>
+                </div>
+                <div class="session-msgs">{{ s.user_message_count }}u / {{ s.assistant_message_count }}a</div>
+                {% if s.tools_used_list %}
+                <div class="session-tools">
+                    {% for t in s.tools_used_list[:4] %}
+                    <span class="tag">{{ t }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No sessions found. The extractor will process sessions shortly.</p>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Projects -->
+{% if projects %}
+<section class="card">
+    <div class="card-header">
+        <h2>Projects</h2>
+    </div>
+    <div class="project-list">
+        {% for pid, ppath, count in projects[:20] %}
+        <a href="/project/{{ pid }}" class="project-row" style="text-decoration:none;color:inherit">
+            <span class="project-name">{{ ppath.split('/')[-1] if ppath else pid[:12] }}</span>
+            <span class="project-path text-muted">{{ ppath or '' }}</span>
+            <span class="badge">{{ count }} sessions</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}

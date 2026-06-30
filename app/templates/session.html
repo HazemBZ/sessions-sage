@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ summary.title or 'Session' }} — Sessions-Sage{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/" class="btn-link">&larr; Back to Dashboard</a>
+    <h1>{{ summary.title or summary.goal[:80] or 'Session' }}</h1>
+</div>
+
+<div class="detail-grid">
+    <!-- Main summary -->
+    <div class="detail-main">
+        <div class="card">
+            <div class="card-header">
+                <h2>Summary</h2>
+                <span class="badge badge-agent">{{ summary.agent or '?' }}</span>
+            </div>
+
+            {% if discussion_summary_enabled and summary.discussion_summary %}
+            <div class="detail-section discussion-summary">
+                <label>Discussion Overview</label>
+                <div class="detail-text">{{ summary.discussion_summary }}</div>
+                <form method="post" action="/session/{{ summary.session_id }}/regenerate-summary" style="margin-top:8px">
+                    <button type="submit" class="btn btn-sm">Regenerate</button>
+                </form>
+            </div>
+            {% elif discussion_summary_enabled %}
+            <div class="detail-section discussion-summary">
+                <label>Discussion Overview</label>
+                <div class="detail-text text-muted">Summary pending — will be generated in background.</div>
+                <form method="post" action="/session/{{ summary.session_id }}/regenerate-summary" style="margin-top:8px">
+                    <button type="submit" class="btn btn-sm">Generate Now</button>
+                </form>
+            </div>
+            {% endif %}
+
+            <div class="detail-section">
+                <label>Goal</label>
+                <div class="detail-text">{{ summary.goal or '—' }}</div>
+            </div>
+
+            <div class="detail-section">
+                <label>Outcomes</label>
+                <div class="detail-text">{{ summary.outcomes or '—' }}</div>
+            </div>
+
+            {% if summary.decisions_list %}
+            <div class="detail-section">
+                <label>Decisions</label>
+                <ul class="detail-list">
+                    {% for d in summary.decisions_list %}
+                    <li>{{ d }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if summary.files_changed_list %}
+            <div class="detail-section">
+                <label>Files Changed ({{ summary.files_changed_list|length }})</label>
+                <div class="file-list">
+                    {% for f in summary.files_changed_list[:20] %}
+                    <code class="file-path">{{ f }}</code>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Notes -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Reflection Notes</h2>
+            </div>
+            {% if notes %}
+            <div class="notes-list">
+                {% for n in notes %}
+                <div class="note">
+                    <div class="note-text">{{ n.note }}</div>
+                    {% if n.tags %}
+                    <div class="note-tags">
+                        {% for t in n.tags %}
+                        <span class="tag">{{ t }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <form method="post" action="/session/{{ summary.session_id }}/note" class="note-form">
+                <textarea name="note" rows="3" placeholder="Add a reflection note..." class="input"></textarea>
+                <button type="submit" class="btn">Save Note</button>
+            </form>
+        </div>
+
+        <!-- Child sessions -->
+        {% if child_summaries %}
+        <div class="card">
+            <div class="card-header">
+                <h2>Sub-sessions ({{ child_summaries|length }})</h2>
+            </div>
+            <div class="session-list">
+                {% for cs in child_summaries %}
+                <div class="session-row" onclick="window.location='/session/{{ cs.session_id }}'" style="cursor:pointer">
+                    <div class="session-main">
+                        <div class="session-title">{{ cs.title or cs.goal[:80] or cs.session_id[:20] }}</div>
+                        <div class="session-meta">
+                            <span class="badge badge-agent">{{ cs.agent or '?' }}</span>
+                            <span class="text-muted">{{ cs.time_created_fmt }}</span>
+                        </div>
+                    </div>
+                    <div class="session-side">
+                        <span class="token-info">{{ "{:,.0f}".format((cs.tokens_input or 0) / 1000) }}k in</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <div class="detail-side">
+        <div class="card">
+            <div class="card-header"><h2>Info</h2></div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>ID</label>
+                    <code class="info-value">{{ summary.session_id[:20] }}...</code>
+                </div>
+                <div class="info-item">
+                    <label>Created</label>
+                    <span class="info-value">{{ summary.time_created_fmt }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Updated</label>
+                    <span class="info-value">{{ summary.time_updated_fmt }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Duration</label>
+                    <span class="info-value">{{ summary.duration or '—' }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Agent</label>
+                    <span class="info-value">{{ summary.agent or '?' }}</span>
+                </div>
+                {% if summary.project_path %}
+                <div class="info-item">
+                    <label>Project</label>
+                    <span class="info-value project-val">{{ summary.project_path }}</span>
+                </div>
+                {% endif %}
+                <div class="info-item">
+                    <label>Messages</label>
+                    <span class="info-value">{{ (summary.user_message_count or 0) + (summary.assistant_message_count or 0) }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h2>Tokens</h2></div>
+            <div class="token-grid">
+                <div>
+                    <div class="tkn-label">Input</div>
+                    <div class="tkn-value">{{ "{:,.0f}".format((summary.tokens_input or 0) / 1000) }}k</div>
+                </div>
+                <div>
+                    <div class="tkn-label">Output</div>
+                    <div class="tkn-value">{{ "{:,.0f}".format((summary.tokens_output or 0) / 1000) }}k</div>
+                </div>
+                <div>
+                    <div class="tkn-label">Total</div>
+                    <div class="tkn-value tkn-total">{{ "{:,.0f}".format(((summary.tokens_input or 0) + (summary.tokens_output or 0)) / 1000) }}k</div>
+                </div>
+            </div>
+            {% if summary.cost %}
+            <div class="cost-line">Cost: ${{ "%.6f"|format(summary.cost) }}</div>
+            {% endif %}
+        </div>
+
+        {% if summary.tools_used_list %}
+        <div class="card">
+            <div class="card-header"><h2>Tools</h2></div>
+            <div class="tools-list">
+                {% for t in summary.tools_used_list %}
+                <span class="tag tag-tool">{{ t }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if raw_messages %}
+        <div class="card">
+            <div class="card-header">
+                <h2>Raw Messages</h2>
+                <span class="text-muted">{{ raw_messages|length }}</span>
+            </div>
+            <details>
+                <summary>View raw</summary>
+                <div class="raw-log">
+                    {% for msg in raw_messages[:10] %}
+                    <div class="raw-msg">
+                        <span class="raw-role">{{ msg.data.role or '?' }}</span>
+                        <span class="raw-time">{{ msg.time_created }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if raw_messages|length > 10 %}
+                    <div class="text-muted">...and {{ raw_messages|length - 10 }} more</div>
+                    {% endif %}
+                </div>
+            </details>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Daily Digests — Sessions-Sage{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Daily Digests</h1>
+    <a href="/" class="btn-link">&larr; Dashboard</a>
+</div>
+
+<section class="card">
+    {% if digests %}
+    <div class="digest-grid">
+        {% for d in digests %}
+        <div class="digest-card">
+            <div class="digest-card-date">{{ d.date }}</div>
+            <div class="digest-card-stats">
+                <div><strong>{{ d.session_count }}</strong> sessions</div>
+                <div class="text-muted">{{ "{:,.0f}".format((d.total_tokens_input or 0) / 1_000_000) }}M in</div>
+                <div class="text-muted">{{ "{:,.0f}".format((d.total_tokens_output or 0) / 1_000_000) }}M out</div>
+            </div>
+            {% if d.projects_list %}
+            <div class="digest-card-projects">
+                {% for p in d.projects_list[:5] %}
+                <span class="tag">{{ p.split('/')[-1] }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No digests yet. Sessions need to be processed first.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
