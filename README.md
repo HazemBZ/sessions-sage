@@ -37,4 +37,4 @@ Opens at `http://localhost:8099`.
 
 ### Project status
 
-Active development — see [ROADMAP.yaml](ROADMAP.yaml) for what's next.
+Active development.
