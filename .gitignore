@@ -18,6 +18,9 @@ Thumbs.db
 
 # Project
 *.db
+*.db-shm
+*.db-wal
 *.log
 /tmp/
 ROADMAP.yaml
+data/

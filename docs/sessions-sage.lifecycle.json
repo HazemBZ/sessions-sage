@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Sessions-Sage Lifecycle",
+    "subtitle": "OpenCode session summarization pipeline — states and transitions",
+    "output": "sessions-sage-lifecycle.html"
+  },
+  "lanes": [
+    { "id": "main", "label": "Application Phase" },
+    { "id": "jobs", "label": "Background Workers" },
+    { "id": "terminal", "label": "Outcome" }
+  ],
+  "states": [
+    { "id": "app_launch", "type": "start", "label": "App Launch", "lane": "main", "col": 0, "step": "01" },
+    { "id": "lifespan_init", "type": "active", "label": "Lifespan Init", "sublabel": "logging, DB, scheduler", "lane": "main", "col": 1, "step": "02" },
+    { "id": "db_ready", "type": "active", "label": "DB Ready", "sublabel": "tables + migrations", "lane": "main", "col": 2, "step": "03" },
+    { "id": "scheduler", "type": "active", "label": "Scheduler Active", "sublabel": "extract 15min / discuss 2min", "lane": "main", "col": 3, "step": "04" },
+    { "id": "dashboard", "type": "active", "label": "Web Dashboard", "sublabel": "FastAPI :8099", "lane": "main", "col": 4, "step": "05" },
+
+    { "id": "initial_import", "type": "active", "label": "Initial Import", "sublabel": "batch all sessions", "lane": "jobs", "col": 0, "step": "1a", "width": 112 },
+    { "id": "incremental", "type": "active", "label": "Incremental", "sublabel": "cursor-based delta", "lane": "jobs", "col": 0, "step": "1b", "yOffset": 68, "width": 112 },
+    { "id": "rule_summary", "type": "active", "label": "Rule Summary", "sublabel": "goals, decisions, files", "lane": "jobs", "col": 1, "step": "02", "width": 112 },
+    { "id": "daily_digest", "type": "active", "label": "Daily Digest", "sublabel": "aggregate stats", "lane": "jobs", "col": 1, "step": "04", "yOffset": 90, "width": 112 },
+    { "id": "llm_discussion", "type": "waiting", "label": "LLM Discussion", "sublabel": "Ollama gemma3:4b", "lane": "jobs", "col": 2, "step": "03", "width": 112 },
+
+    { "id": "shutdown", "type": "success", "label": "Graceful Stop", "sublabel": "scheduler + DB closed", "lane": "terminal", "col": 0 },
+    { "id": "no_db", "type": "failure", "label": "Extraction Fail", "sublabel": "opencode.db missing", "lane": "terminal", "col": 1 },
+    { "id": "ollama_down", "type": "failure", "label": "Ollama Unreachable", "sublabel": "discussion skipped", "lane": "terminal", "col": 2 }
+  ],
+  "transitions": [
+    { "from": "app_launch", "to": "lifespan_init", "variant": "emphasis" },
+    { "from": "lifespan_init", "to": "db_ready", "variant": "emphasis" },
+    { "from": "db_ready", "to": "scheduler", "variant": "emphasis" },
+    { "from": "scheduler", "to": "dashboard", "variant": "emphasis" },
+
+    { "from": "scheduler", "to": "initial_import", "label": "first run", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "from": "scheduler", "to": "incremental", "label": "every 15min", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "from": "scheduler", "to": "llm_discussion", "label": "every 2min", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+
+    { "from": "initial_import", "to": "rule_summary", "variant": "emphasis" },
+    { "from": "incremental", "to": "rule_summary", "variant": "emphasis" },
+    { "from": "rule_summary", "to": "daily_digest", "variant": "dashed" },
+
+    { "from": "lifespan_init", "to": "shutdown", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "from": "incremental", "to": "no_db", "label": "no opencode.db", "variant": "security", "fromSide": "bottom", "toSide": "top", "labelDx": -40 },
+    { "from": "llm_discussion", "to": "ollama_down", "label": "HTTP error", "variant": "security", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Rule-Based Summarizer", "items": ["Extracts goal from first user message", "Detects decisions via regex patterns", "Lists files changed, tools used", "Per-session, no LLM required"] },
+    { "dot": "violet", "title": "LLM Discussion Summary", "items": ["Ollama gemma3:4b, temp=0.3", "Max 512 tokens, 3-5 sentences", "Rate-limited: 1s gap between calls", "Backlog: 603 sessions, ~25% done"] },
+    { "dot": "amber", "title": "Web Dashboard", "items": ["Session list + filters (project/agent/days)", "Detail view with raw messages + notes", "Project timeline + daily digests", "REST API at /api/stats, /api/sessions"] },
+    { "dot": "cyan", "title": "Architecture", "items": ["FastAPI + Jinja2 templates + SQLite", "APScheduler for background jobs", "Read-only opencode.db extractor", "Configurable via Config dataclass"] }
+  ]
+}
