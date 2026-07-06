@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ todo.title }} — TODO Artifacts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="/todos" class="btn-link">&larr; All TODO Artifacts</a>
+        <h1 style="margin-top:4px">{{ todo.title }}</h1>
+    </div>
+    <div class="header-actions">
+        <span class="badge badge-todo-{{ todo.status }}">{{ todo.status | replace('_', ' ') }}</span>
+        {% if todo.is_stale %}
+        <span class="badge badge-todo-stale">Needs review</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if todo.is_stale %}
+<div class="alert alert-warning" style="margin-bottom:20px">
+    <strong>Status mismatch:</strong> File status is <code>{{ todo.status }}</code> but <strong>{{ todo.completed_items }}/{{ todo.total_items }}</strong> items are completed.
+    {% if todo.status == "completed" and todo.completed_items < todo.total_items %}
+    File marked done but {{ todo.total_items - todo.completed_items }} item{% if todo.total_items - todo.completed_items != 1 %}s{% endif %} not completed.
+    {% elif todo.status != "completed" and todo.completed_items == todo.total_items and todo.total_items > 0 %}
+    All items done — consider marking file status <code>completed</code>.
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="detail-grid">
+    <!-- Main: Items + Body -->
+    <div class="detail-main">
+        <!-- Items -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Items ({{ todo.total_items }})</h2>
+                <span class="text-muted">{{ todo.completed_items }} done</span>
+            </div>
+            {% if todo.items %}
+            <div class="todo-item-list">
+                {% for item in todo.items %}
+                <div class="todo-item todo-item-{{ item.status }}">
+                    <div class="todo-item-header">
+                        <span class="todo-item-id">#{{ item.id }}</span>
+                        <span class="todo-item-status badge badge-todo-{{ item.status }}">{{ item.status | replace('_', ' ') }}</span>
+                        {% if item.priority %}
+                        <span class="badge badge-todo-priority-{{ item.priority }}">{{ item.priority }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="todo-item-desc">{{ item.description }}</div>
+                    {% if item.notes %}
+                    <div class="todo-item-notes">{{ item.notes }}</div>
+                    {% endif %}
+                    {% if item.files %}
+                    <div class="todo-item-files">
+                        {% for f in item.files %}
+                        <code class="file-path">{{ f }}</code>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No items in this TODO artifact.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Body markdown -->
+        {% if todo.body_markdown %}
+        <div class="card">
+            <div class="card-header"><h2>Notes</h2></div>
+            <div class="todo-body">
+                {{ todo.body_markdown | replace('\n', '<br>') | safe }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <div class="detail-side">
+        <div class="card">
+            <div class="card-header"><h2>Info</h2></div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>File</label>
+                    <code class="info-value" style="word-break:break-all;font-size:0.65rem">{{ todo.file_name }}</code>
+                </div>
+                <div class="info-item">
+                    <label>Project</label>
+                    <span class="info-value project-val">{{ todo.project_short }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Date</label>
+                    <span class="info-value">{{ todo.date }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Status</label>
+                    <span class="badge badge-todo-{{ todo.status }}">{{ todo.status | replace('_', ' ') }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Items</label>
+                    <span class="info-value">{{ todo.completed_items }}/{{ todo.total_items }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Progress</label>
+                    <div class="progress-bar-bg" style="flex:1;min-width:80px;margin-left:8px">
+                        <div class="progress-bar-fill" style="width:{{ "%.0f"|format(todo.progress_pct) }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if todo.tags %}
+        <div class="card">
+            <div class="card-header"><h2>Tags</h2></div>
+            <div class="tools-list">
+                {% for t in todo.tags %}
+                <span class="tag tag-todo-tag">{{ t }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if todo.depends_on %}
+        <div class="card">
+            <div class="card-header"><h2>Depends On</h2></div>
+            <div class="tools-list" style="flex-direction:column;gap:6px">
+                {% for dep in todo.depends_on %}
+                <a href="/todos/{{ dep | urlencode }}" class="btn-link" style="font-size:0.82rem">{{ dep }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if todo.session_id %}
+        <div class="card">
+            <div class="card-header"><h2>Session</h2></div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Session ID</label>
+                    <code class="info-value">{{ todo.session_id[:20] }}...</code>
+                </div>
+                <div style="padding:0 20px 12px">
+                    <a href="/session/{{ todo.session_id }}" class="btn-link">View Session →</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header"><h2>File</h2></div>
+            <div style="padding:12px 20px;font-size:0.75rem;color:var(--text-muted);word-break:break-all">
+                <code style="font-size:0.7rem">{{ todo.file_path }}</code>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

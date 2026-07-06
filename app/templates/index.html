@@ -16,7 +16,13 @@
             <select name="agent" class="input" onchange="this.form.submit()">
                 <option value="">All agents</option>
                 {% for agent, count in agents %}
-                <option value="{{ agent }}" {% if selected_agent == agent %}selected{% endif %}>{{ agent }} ({{ count }})</option>
+                <option value="{{ agent }}" {% if selected_agent == agent %}selected{% endif %}>{{ agent.split(' ')[0] }} ({{ count }})</option>
+                {% endfor %}
+            </select>
+            <select name="model" class="input" onchange="this.form.submit()">
+                <option value="">All models</option>
+                {% for model, count in models %}
+                <option value="{{ model }}" {% if selected_model == model %}selected{% endif %}>{{ model }} ({{ count }})</option>
                 {% endfor %}
             </select>
             <select name="discussion" class="input" onchange="this.form.submit()">
@@ -97,6 +103,9 @@
                 <div class="session-title">{{ s.title or s.goal[:100] or 'Untitled' }}</div>
                 <div class="session-meta">
                     <span class="badge badge-agent">{{ s.agent or '?' }}</span>
+                    {% if s.model_name %}
+                    <span class="badge badge-model" title="{{ s.model_provider }}">{{ s.model_name }}</span>
+                    {% endif %}
                     {% if s.has_discussion %}
                     <span class="badge badge-discussion-done" title="Discussion summary available">Summarized</span>
                     {% else %}

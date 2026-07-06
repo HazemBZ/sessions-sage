@@ -4,7 +4,37 @@
 {% block content %}
 <div class="page-header">
     <h1>Projects</h1>
-    <span class="text-muted">{{ projects|length }} projects</span>
+    <div class="header-actions">
+        <span class="text-muted">{{ projects|length }} projects</span>
+    </div>
+</div>
+
+<!-- Totals bar -->
+<div class="totals-bar">
+    <div class="totals-item">
+        <span class="totals-value">{{ projects|length }}</span>
+        <span class="totals-label">Projects</span>
+    </div>
+    <div class="totals-item">
+        <span class="totals-value">{{ "{:,.0f}".format(total_tokens_in / 1_000_000) }}M</span>
+        <span class="totals-label">Total Tokens In</span>
+    </div>
+    <div class="totals-item">
+        <span class="totals-value">{{ "{:,.0f}".format(total_tokens_out / 1_000_000) }}M</span>
+        <span class="totals-label">Total Tokens Out</span>
+    </div>
+    <div class="totals-item">
+        <span class="totals-value">${{ "%.2f"|format(total_cost) }}</span>
+        <span class="totals-label">Total Cost</span>
+    </div>
+</div>
+
+<!-- Sort bar -->
+<div class="sort-bar">
+    <span class="sort-label">Sort:</span>
+    <a href="/projects?sort=sessions" class="sort-btn {% if selected_sort == 'sessions' %}sort-active{% endif %}">Sessions</a>
+    <a href="/projects?sort=cost" class="sort-btn {% if selected_sort == 'cost' %}sort-active{% endif %}">Cost</a>
+    <a href="/projects?sort=recent" class="sort-btn {% if selected_sort == 'recent' %}sort-active{% endif %}">Recent</a>
 </div>
 
 <div class="projects-grid">
@@ -13,7 +43,10 @@
         <div class="card project-card">
             <div class="card-header">
                 <h2>{{ p.project_path.split('/')[-1] or p.project_id[:20] }}</h2>
-                <span class="badge">{{ p.session_count }} sessions</span>
+                <div class="card-header-meta">
+                    <span class="badge">{{ p.session_count }} sessions</span>
+                    <span class="text-muted cost-badge">${{ "%.2f"|format(p.total_cost) }}</span>
+                </div>
             </div>
             <div class="project-card-body">
                 <div class="project-card-path text-muted">{{ p.project_path }}</div>
@@ -25,6 +58,9 @@
                     {% if p.discussion_done < p.session_count %}
                     <span class="badge badge-discussion-pending">{{ p.session_count - p.discussion_done }} pending</span>
                     {% endif %}
+                </div>
+                <div class="project-card-tokens">
+                    <span class="text-muted">{{ "{:,.0f}".format(p.total_tokens_input / 1_000_000) }}M in / {{ "{:,.0f}".format(p.total_tokens_output / 1_000_000) }}M out</span>
                 </div>
             </div>
         </div>
