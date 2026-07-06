@@ -16,6 +16,25 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+_MEANINGLESS_TITLE_PATTERNS: list[re.Pattern] = [
+    re.compile(r'^New session\s*[-–—]\s*\d{4}', re.IGNORECASE),
+    re.compile(r'^New session$', re.IGNORECASE),
+    re.compile(r'^Untitled$', re.IGNORECASE),
+    re.compile(r'^Session$', re.IGNORECASE),
+    re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', re.IGNORECASE),
+    re.compile(r'^\d{4}-\d{2}-\d{2}$', re.IGNORECASE),
+]
+
+
+def is_meaningless_title(title: str) -> bool:
+    if not title or not title.strip():
+        return True
+    t = title.strip()
+    if any(p.search(t) for p in _MEANINGLESS_TITLE_PATTERNS):
+        return True
+    return False
+
+
 # Tools that indicate file modification
 WRITE_TOOLS = {"write", "edit", "rewrite", "ast_grep_replace", "create"}
 READ_TOOLS = {"read", "grep", "glob", "ast_grep_search", "search"}
@@ -235,6 +254,49 @@ def summarize_discussion_llm(
         return None
     except Exception as e:
         logger.exception("Ollama summarization error: %s", e)
+        return None
+
+
+def generate_session_title(
+    messages: list[dict[str, Any]],
+    parts: list[dict[str, Any]],
+    ollama_url: str = "http://localhost:11434",
+    model: str = "gemma3:4b",
+    max_msgs: int = 10,
+) -> str | None:
+    conversation = _build_conversation_text(messages, parts, max_msgs=max_msgs, max_chars=4000)
+    if not conversation.strip():
+        return None
+
+    prompt = (
+        "Read the following conversation between a user and AI coding assistant. "
+        "Generate a concise title (3-10 words) that describes what this session is about. "
+        "Respond with ONLY the title, no quotes, no prefix, no explanation.\n\n"
+        f"CONVERSATION:\n{conversation}\n\nTITLE:"
+    )
+
+    try:
+        resp = httpx.post(
+            f"{ollama_url}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,
+                    "num_predict": 30,
+                },
+            },
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        title = (data.get("response") or "").strip().strip('"\' \t\n\r')
+        if 5 < len(title) < 100:
+            return title
+        return None
+    except Exception:
+        logger.exception("Title generation failed")
         return None
 
 

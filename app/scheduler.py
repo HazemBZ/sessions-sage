@@ -85,7 +85,7 @@ def run_discussion_summaries(extractor: OpenCodeExtractor, summary_db: SummaryDB
     if not pending:
         return 0
 
-    from app.summarizer import summarize_discussion_llm
+    from app.summarizer import generate_session_title, is_meaningless_title, summarize_discussion_llm
 
     processed = 0
     for row in pending:
@@ -107,6 +107,18 @@ def run_discussion_summaries(extractor: OpenCodeExtractor, summary_db: SummaryDB
                     sid, summary, CONFIG.discussion_summary_version,
                 )
                 logger.info("Discussion summary for %s (%d chars)", sid, len(summary))
+
+                current_title = row.get("title", "")
+                if is_meaningless_title(current_title):
+                    new_title = generate_session_title(
+                        messages, parts,
+                        ollama_url=CONFIG.ollama_url,
+                        model=CONFIG.ollama_model,
+                    )
+                    if new_title:
+                        summary_db.update_session_title(sid, new_title)
+                        logger.info("Generated title for %s: %s", sid, new_title)
+
                 processed += 1
             else:
                 # Mark as version=0 so we don't retry broken sessions endlessly
@@ -176,3 +188,47 @@ def run_initial_import(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> i
     summary_db.rebuild_daily_digests()
     logger.info("Initial import complete: %d sessions processed", processed)
     return processed
+
+
+def run_title_backfill(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> int:
+    """One-shot backfill: generate titles for sessions with meaningless titles.
+
+    Rate-limited like discussion summaries. Returns number of titles generated.
+    Subsequent runs fast-skip since meaningful titles won't be regenerated.
+    """
+    from app.summarizer import generate_session_title, is_meaningless_title
+
+    sessions = summary_db.get_summaries(limit=1000)
+    pending = [s for s in sessions if is_meaningless_title(s.get("title", ""))]
+    if not pending:
+        return 0
+
+    logger.info("Title backfill: %d sessions need titles", len(pending))
+    done = 0
+    for s in pending:
+        sid = s["session_id"]
+        try:
+            messages = extractor.get_messages(sid)
+            parts = extractor.get_parts(sid)
+            if not messages:
+                summary_db.update_session_title(sid, "(empty session)")
+                done += 1
+                continue
+
+            title = generate_session_title(
+                messages, parts,
+                ollama_url=CONFIG.ollama_url,
+                model=CONFIG.ollama_model,
+            )
+            if title:
+                summary_db.update_session_title(sid, title)
+                logger.info("Title for %s: %s", sid, title)
+                done += 1
+
+            time.sleep(CONFIG.discussion_rate_limit_s)
+
+        except Exception:
+            logger.exception("Title backfill failed for %s", sid)
+
+    logger.info("Title backfill: %d titles generated", done)
+    return done

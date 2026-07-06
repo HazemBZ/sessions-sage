@@ -283,6 +283,14 @@ class SummaryDB:
         )
         self.conn.commit()
 
+    def update_session_title(self, session_id: str, title: str) -> None:
+        now = int(time.time() * 1000)
+        self.conn.execute(
+            "UPDATE session_summary SET title = ?, updated_at = ? WHERE session_id = ?",
+            (title, now, session_id),
+        )
+        self.conn.commit()
+
     # ---- Aggregation helpers ----
 
     def rebuild_daily_digests(self) -> None:
@@ -345,6 +353,15 @@ class SummaryDB:
         """).fetchone()
         stats["discussion_done"] = disc_done["cnt"] if disc_done else 0
         stats["discussion_pending"] = (disc_row["total"] if disc_row else 0) - stats["discussion_done"]
+
+        title_m = self.conn.execute("""
+            SELECT COUNT(*) as cnt FROM session_summary
+            WHERE title IS NULL OR title = '' OR title = 'Untitled' OR title = 'Session'
+               OR title LIKE 'New session%'
+               OR title LIKE '____-__-__T%'
+               OR title LIKE '____-__-__'
+        """).fetchone()
+        stats["title_backfill_pending"] = title_m["cnt"] if title_m else 0
         return stats
 
     def get_agents(self) -> list[tuple[str, int]]:
