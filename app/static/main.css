@@ -121,6 +121,10 @@ a:hover { text-decoration: underline; }
     border-radius: 2px;
     transition: width 1s ease;
 }
+.progress-bar-fill-orange {
+    background: linear-gradient(90deg, var(--accent), #e68a00);
+}
+.stat-card-title .stat-value { font-size: 1.5rem; }
 
 /* Filters */
 .filter-bar {

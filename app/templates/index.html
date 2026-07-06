@@ -67,6 +67,21 @@
         </div>
         <div class="stat-sub">{{ stats.discussion_pending or 0 }} pending</div>
     </div>
+    <div class="stat-card stat-card-title">
+        <div class="stat-value">
+            {{ stats.title_backfill_pending or 0 }}
+        </div>
+        <div class="stat-label">Titles Pending</div>
+        {% if stats.title_backfill_pending > 0 %}
+        <div class="progress-bar-bg">
+            {% set pct = (( (stats.total_sessions - stats.title_backfill_pending) / stats.total_sessions ) * 100)|round(1) if stats.total_sessions > 0 else 0 %}
+            <div class="progress-bar-fill progress-bar-fill-orange" style="width:{{ pct }}%"></div>
+        </div>
+        <div class="stat-sub">{{ pct }}% titled — backfill running</div>
+        {% else %}
+        <div class="stat-sub" style="color:var(--green)">✓ All sessions titled</div>
+        {% endif %}
+    </div>
 </div>
 
 <!-- Daily digests mini -->

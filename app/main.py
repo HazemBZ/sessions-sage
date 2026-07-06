@@ -20,8 +20,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.config import CONFIG
 from app.db import SummaryDB
 from app.extractor import OpenCodeExtractor
-from app.scheduler import run_discussion_summaries, run_extraction, run_initial_import
-from app.summarizer import summarize_discussion_llm
+from app.scheduler import run_discussion_summaries, run_extraction, run_initial_import, run_title_backfill
+from app.summarizer import generate_session_title, is_meaningless_title, summarize_discussion_llm
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,22 @@ async def lifespan(app: FastAPI):
             logger.exception("Discussion summary job failed")
 
     scheduler.add_job(_run_discussion, "interval", minutes=2, id="discuss")
+
+    def _run_title_backfill():
+        if extractor is None:
+            return
+        try:
+            run_title_backfill(extractor, summary_db)
+        except Exception:
+            logger.exception("Title backfill failed")
+
+    from datetime import datetime, timezone, timedelta
+    scheduler.add_job(
+        _run_title_backfill, "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=90),
+        id="title_backfill",
+    )
+
     scheduler.start()
 
     # Also run immediately
@@ -305,6 +321,16 @@ async def regenerate_summary(request: Request, session_id: str):
             summary_db.update_discussion_summary(
                 session_id, result, CONFIG.discussion_summary_version,
             )
+
+            current_title = summary.get("title", "")
+            if is_meaningless_title(current_title):
+                new_title = generate_session_title(
+                    messages, parts,
+                    ollama_url=CONFIG.ollama_url,
+                    model=CONFIG.ollama_model,
+                )
+                if new_title:
+                    summary_db.update_session_title(session_id, new_title)
         else:
             summary_db.update_discussion_summary(session_id, "", 0)
 
