@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}TODO Artifacts — Sessions-Sage{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>TODO Artifacts</h1>
+    <div class="header-actions">
+        <a href="/todos?refresh=1" class="btn">Refresh Scan</a>
+    </div>
+</div>
+
+{% if errors %}
+<div class="alert alert-warning">
+    <strong>{{ errors|length }} scan error{% if errors|length != 1 %}s{% endif %}:</strong>
+    <ul>
+        {% for e in errors %}
+        <li>{{ e }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- Stats -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total }}</div>
+        <div class="stat-label">Total Artifacts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.completed }}</div>
+        <div class="stat-label">Completed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.in_progress }}</div>
+        <div class="stat-label">In Progress</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.pending }}</div>
+        <div class="stat-label">Pending</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.cancelled }}</div>
+        <div class="stat-label">Cancelled</div>
+    </div>
+    <div class="stat-card stat-card-todo-items">
+        <div class="stat-value">{{ stats.total_items }}</div>
+        <div class="stat-label">Total Items</div>
+        <div class="stat-sub">{{ stats.completed_items }} done ({{ "%.0f"|format(stats.completed_pct) }}%)</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card">
+    <div class="card-header"><h2>All TODO Artifacts</h2></div>
+    <div class="filter-bar" style="padding:12px 20px;border-bottom:1px solid var(--border)">
+        <form method="get" class="filter-bar">
+            <input type="text" name="search" placeholder="Search artifacts..." value="{{ search }}" class="input">
+            <select name="status" class="input" onchange="this.form.submit()">
+                <option value="">All statuses</option>
+                <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>Pending</option>
+                <option value="in_progress" {% if selected_status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                <option value="completed" {% if selected_status == 'completed' %}selected{% endif %}>Completed</option>
+                <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+            </select>
+            <select name="project" class="input" onchange="this.form.submit()">
+                <option value="">All projects</option>
+                {% for p, c in projects %}
+                <option value="{{ p }}" {% if selected_project == p %}selected{% endif %}>{{ p.split('/')[-1] or p }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn">Filter</button>
+        </form>
+        <span class="text-muted" style="margin-left:auto;font-size:0.8rem">{{ artifacts|length }} artifact{% if artifacts|length != 1 %}s{% endif %} · {{ projects|length }} project{% if projects|length != 1 %}s{% endif %}</span>
+    </div>
+
+    {% if artifacts %}
+    <div class="todo-list">
+        {% for a in artifacts %}
+        <a href="/todos/{{ a.file_name | urlencode }}" class="todo-row" style="text-decoration:none;color:inherit">
+            <div class="todo-main">
+                <div class="todo-title">{{ a.title }}</div>
+                <div class="todo-meta">
+                    <span class="badge badge-todo-{{ a.status }}">{{ a.status | replace('_', ' ') }}</span>
+                    <span class="badge badge-project">{{ a.project_short }}</span>
+                    <span class="text-muted">{{ a.date }}</span>
+                    {% if a.tags %}
+                        {% for t in a.tags[:3] %}
+                        <span class="tag tag-todo-tag">{{ t }}</span>
+                        {% endfor %}
+                        {% if a.tags|length > 3 %}
+                        <span class="text-muted">+{{ a.tags|length - 3 }}</span>
+                        {% endif %}
+                    {% endif %}
+                    {% if a.session_id %}
+                    <span class="badge badge-todo-session" title="Linked to session">Session</span>
+                    {% endif %}
+                    {% if a.is_stale %}
+                    <span class="badge badge-todo-stale" title="File status doesn't match item statuses">Needs review</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="todo-side">
+                <div class="todo-progress-info">
+                    <span class="todo-items">{{ a.completed_items }}/{{ a.total_items }} items</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" style="width:{{ "%.0f"|format(a.progress_pct) }}%"></div>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No TODO artifacts found.</p>
+        <p class="text-muted">Create one at <code>.omo/todos/&lt;YYYY-MM-DD&gt;_&lt;label&gt;.md</code> in any project, then refresh.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Projects summary -->
+{% if projects_summary %}
+<section class="card">
+    <div class="card-header">
+        <h2>Projects with TODOs</h2>
+    </div>
+    <div class="project-list">
+        {% for ps in projects_summary %}
+        <div class="project-row">
+            <span class="project-name">{{ ps.path.split('/')[-1] or ps.path }}</span>
+            <span class="project-path text-muted">{{ ps.path }}</span>
+            <span class="badge">{{ ps.count }} artifact{% if ps.count != 1 %}s{% endif %}</span>
+            <span class="text-muted">{{ ps.completed }}/{{ ps.count }} done</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% endblock %}

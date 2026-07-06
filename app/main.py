@@ -157,6 +157,7 @@ async def dashboard(
     search: str = Query(default=""),
     project_id: str = Query(default=""),
     agent: str = Query(default=""),
+    model: str = Query(default=""),
     discussion: str = Query(default=""),
 ):
     stats = summary_db.get_stats()
@@ -167,6 +168,7 @@ async def dashboard(
         search=search or None,
         project_id=project_id or None,
         agent=agent or None,
+        model=model or None,
     )
 
     if discussion == "done":
@@ -185,8 +187,22 @@ async def dashboard(
         s["time_updated_fmt"] = _fmt_ts(s.get("time_updated", 0))
         s["tokens_total"] = (s.get("tokens_input", 0) or 0) + (s.get("tokens_output", 0) or 0)
         s["has_discussion"] = bool(s.get("discussion_summary"))
+        # Parse model JSON -> readable model name
+        raw_model = s.get("model", "")
+        if raw_model:
+            try:
+                parsed = json.loads(raw_model) if isinstance(raw_model, str) else raw_model
+                s["model_name"] = parsed.get("id", raw_model)
+                s["model_provider"] = parsed.get("providerID", "")
+            except (json.JSONDecodeError, TypeError):
+                s["model_name"] = raw_model
+                s["model_provider"] = ""
+        else:
+            s["model_name"] = ""
+            s["model_provider"] = ""
 
     agents = summary_db.get_agents()
+    models = summary_db.get_models()
     projects = summary_db.get_projects()
     digests = summary_db.get_daily_digests(limit=14)
 
@@ -197,12 +213,14 @@ async def dashboard(
         "stats": stats,
         "sessions": sessions,
         "agents": agents,
+        "models": models,
         "projects": projects,
         "digests": digests,
         "days": days,
         "search": search,
         "selected_project": project_id,
         "selected_agent": agent,
+        "selected_model": model,
         "total_sessions": summary_db.count_summaries(),
         "selected_discussion": discussion,
     })
@@ -309,30 +327,58 @@ async def digests_view(request: Request):
 
 
 @app.get("/projects", response_class=HTMLResponse)
-async def projects_list(request: Request):
+async def projects_list(
+    request: Request,
+    sort: str = Query(default="sessions"),
+):
     projects = summary_db.get_projects()
     # Enrich with per-project stats
     enriched = []
     for pid, ppath, count in projects:
         pstats = summary_db.get_project_stats(pid)
+        last_session_ts = pstats.get("last_session", 0)
         enriched.append({
             "project_id": pid,
             "project_path": ppath,
             "session_count": count,
             "discussion_done": pstats.get("discussion_done", 0),
             "first_session": _fmt_ts(pstats.get("first_session", 0)),
-            "last_session": _fmt_ts(pstats.get("last_session", 0)),
+            "last_session": _fmt_ts(last_session_ts),
+            "last_session_ts": last_session_ts,
+            "total_cost": pstats.get("total_cost", 0),
+            "total_tokens_input": pstats.get("total_tokens_input", 0),
+            "total_tokens_output": pstats.get("total_tokens_output", 0),
         })
+
+    # Sort
+    if sort == "cost":
+        enriched.sort(key=lambda p: -p["total_cost"])
+    elif sort == "sessions":
+        enriched.sort(key=lambda p: -p["session_count"])
+    elif sort == "recent":
+        enriched.sort(key=lambda p: -(p.get("last_session_ts") or 0))
+
+    total_cost = sum(p["total_cost"] for p in enriched)
+    total_tokens_in = sum(p["total_tokens_input"] for p in enriched)
+    total_tokens_out = sum(p["total_tokens_output"] for p in enriched)
 
     return templates.TemplateResponse(request, "projects.html", {
         "projects": enriched,
+        "total_cost": total_cost,
+        "total_tokens_in": total_tokens_in,
+        "total_tokens_out": total_tokens_out,
         "total_sessions": summary_db.count_summaries(),
+        "selected_sort": sort,
     })
 
 
 @app.get("/project/{project_id}", response_class=HTMLResponse)
-async def project_detail(request: Request, project_id: str):
-    sessions = summary_db.get_project_sessions(project_id)
+async def project_detail(
+    request: Request,
+    project_id: str,
+    sort: str = Query(default="recent"),
+):
+    sessions = summary_db.get_project_sessions(project_id, sort=sort)
     if not sessions:
         return HTMLResponse("Project not found", status_code=404)
 
@@ -350,6 +396,15 @@ async def project_detail(request: Request, project_id: str):
         s["duration"] = _fmt_duration(s.get("time_created", 0), s.get("time_updated", 0))
         s["date"] = _fmt_date(s.get("time_created", 0))
         s["has_discussion"] = bool(s.get("discussion_summary"))
+        raw_model = s.get("model", "")
+        if raw_model:
+            try:
+                parsed = json.loads(raw_model) if isinstance(raw_model, str) else raw_model
+                s["model_name"] = parsed.get("id", raw_model)
+            except (json.JSONDecodeError, TypeError):
+                s["model_name"] = raw_model
+        else:
+            s["model_name"] = ""
 
     return templates.TemplateResponse(request, "project.html", {
         "sessions": sessions,
@@ -357,6 +412,7 @@ async def project_detail(request: Request, project_id: str):
         "project_short": project_short,
         "project_path": project_name,
         "project_id": project_id,
+        "selected_sort": sort,
         "stats": {
             **pstats,
             "first_session_fmt": _fmt_ts(pstats.get("first_session", 0)),

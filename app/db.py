@@ -161,6 +161,7 @@ class SummaryDB:
         offset: int = 0,
         project_id: str | None = None,
         agent: str | None = None,
+        model: str | None = None,
         days: int | None = None,
         search: str | None = None,
         parent_id: str | None = None,
@@ -174,6 +175,9 @@ class SummaryDB:
         if agent:
             clauses.append("agent = ?")
             params.append(agent)
+        if model:
+            clauses.append("model LIKE ?")
+            params.append(f"%\"id\":\"{model}\"%")
         if days:
             cutoff = int(time.time() * 1000) - days * 86400 * 1000
             clauses.append("time_created >= ?")
@@ -349,6 +353,23 @@ class SummaryDB:
         ).fetchall()
         return [(r["agent"], r["cnt"]) for r in rows]
 
+    def get_models(self) -> list[tuple[str, int]]:
+        """Return (model_id, count) tuples, parsed from JSON model field."""
+        rows = self.conn.execute(
+            "SELECT model, COUNT(*) as cnt FROM session_summary WHERE model IS NOT NULL AND model != '' GROUP BY model ORDER BY cnt DESC"
+        ).fetchall()
+        import json
+        aggregated: dict[str, int] = {}
+        for r in rows:
+            try:
+                parsed = json.loads(r["model"])
+                mid = parsed.get("id", r["model"])
+                aggregated[mid] = aggregated.get(mid, 0) + r["cnt"]
+            except (json.JSONDecodeError, TypeError):
+                mid = r["model"]
+                aggregated[mid] = aggregated.get(mid, 0) + r["cnt"]
+        return sorted(aggregated.items(), key=lambda x: -x[1])
+
     def get_projects(self) -> list[tuple[str, str, int]]:
         """Return (project_id, project_path, session_count) sorted."""
         rows = self.conn.execute("""
@@ -361,12 +382,19 @@ class SummaryDB:
         return [(r["project_id"], r["project_path"] or "", r["cnt"]) for r in rows]
 
     def get_project_sessions(
-        self, project_id: str, limit: int = 200, offset: int = 0
+        self, project_id: str, limit: int = 200, offset: int = 0, sort: str = "recent"
     ) -> list[dict[str, Any]]:
+        if sort == "cost":
+            order = "ORDER BY cost DESC"
+        elif sort == "oldest":
+            order = "ORDER BY time_created ASC"
+        else:  # recent (default)
+            order = "ORDER BY time_created DESC"
+
         rows = self.conn.execute(
-            """SELECT * FROM session_summary
+            f"""SELECT * FROM session_summary
                WHERE project_id = ?
-               ORDER BY time_created ASC
+               {order}
                LIMIT ? OFFSET ?""",
             (project_id, limit, offset),
         ).fetchall()
@@ -391,6 +419,23 @@ class SummaryDB:
             (project_id,),
         ).fetchall()
         result["agents"] = [dict(a) for a in agents]
+        models = self.conn.execute(
+            "SELECT model, COUNT(*) as cnt FROM session_summary WHERE project_id = ? AND model IS NOT NULL AND model != '' GROUP BY model ORDER BY cnt DESC",
+            (project_id,),
+        ).fetchall()
+        import json
+        model_list: list[dict[str, Any]] = []
+        seen: dict[str, int] = {}
+        for m in models:
+            try:
+                parsed = json.loads(m["model"])
+                mid = parsed.get("id", m["model"])
+                seen[mid] = seen.get(mid, 0) + m["cnt"]
+            except (json.JSONDecodeError, TypeError):
+                seen[m["model"]] = seen.get(m["model"], 0) + m["cnt"]
+        for mid, cnt in sorted(seen.items(), key=lambda x: -x[1]):
+            model_list.append({"model": mid, "cnt": cnt})
+        result["models"] = model_list
         return result
 
     def close(self) -> None:

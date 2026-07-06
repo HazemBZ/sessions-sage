@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Notes — Sessions-Sage{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Reflection Notes</h1>
+    <div class="header-actions">
+        <form method="get" class="filter-bar">
+            <label class="bookmark-filter-label">
+                <input type="checkbox" name="bookmarked" value="1"
+                    onchange="this.form.submit()"
+                    {% if filter_bookmarked %}checked{% endif %}>
+                Bookmarked only
+            </label>
+        </form>
+    </div>
+</div>
+
+<section class="card">
+    <div class="card-header">
+        <h2>All Notes</h2>
+        <span class="text-muted">{{ notes|length }} note{% if notes|length != 1 %}s{% endif %}</span>
+    </div>
+
+    {% if notes %}
+    <div class="notes-page-list">
+        {% for n in notes %}
+        <div class="notes-page-row">
+            <div class="notes-page-main">
+                <div class="notes-page-header">
+                    {% if n.session_title %}
+                    <a href="/session/{{ n.session_id }}" class="notes-page-session-link">{{ n.session_title[:80] }}</a>
+                    {% else %}
+                    <a href="/session/{{ n.session_id }}" class="notes-page-session-link text-muted">{{ n.session_id[:20] }}...</a>
+                    {% endif %}
+                    <span class="text-muted notes-page-date">{{ n.created_fmt }}</span>
+                </div>
+                <div class="notes-page-text">{{ n.note }}</div>
+                {% if n.tags %}
+                <div class="notes-page-tags">
+                    {% for t in n.tags %}
+                    <span class="tag">{{ t }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if n.project_path %}
+                <div class="notes-page-project">{{ n.project_path }}</div>
+                {% endif %}
+            </div>
+            <div class="notes-page-side">
+                <button class="btn-bookmark {% if n.bookmarked %}bookmarked{% endif %}"
+                    data-note-id="{{ n.id }}"
+                    onclick="toggleBookmark(this, {{ n.id }})"
+                    title="{% if n.bookmarked %}Remove bookmark{% else %}Bookmark this note{% endif %}">
+                    {% if n.bookmarked %}★{% else %}☆{% endif %}
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>{% if filter_bookmarked %}No bookmarked notes yet.{% else %}No notes yet. Add one on any session page.{% endif %}</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block head %}
+<script>
+function toggleBookmark(btn, noteId) {
+    fetch('/note/' + noteId + '/bookmark', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.bookmarked) {
+                btn.classList.add('bookmarked');
+                btn.innerHTML = '★';
+                btn.title = 'Remove bookmark';
+            } else {
+                btn.classList.remove('bookmarked');
+                btn.innerHTML = '☆';
+                btn.title = 'Bookmark this note';
+            }
+        });
+}
+</script>
+{% endblock %}

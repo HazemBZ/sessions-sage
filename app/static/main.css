@@ -193,6 +193,7 @@ select.input { cursor: pointer; }
     color: var(--text-muted);
 }
 .badge-agent { background: #1e293b; color: #93c5fd; }
+.badge-model { background: #1a1a2e; color: #c084fc; font-size: 0.68rem; }
 .badge-project { background: #1c1917; color: #fdba74; }
 .badge-session { background: #0f172a; color: var(--accent); border: 1px solid var(--accent); }
 .badge-discussion-done { background: #052e16; color: #4ade80; border: 1px solid #166534; }
@@ -344,9 +345,32 @@ code.info-value { font-size: 0.7rem; background: var(--surface2); padding: 1px 6
 details summary { cursor: pointer; padding: 12px 20px; font-size: 0.85rem; color: var(--accent); }
 
 /* Project cards grid */
+/* Totals bar */
+.totals-bar {
+    display: flex; gap: 24px; padding: 12px 0; margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.totals-item {
+    display: flex; flex-direction: column; align-items: center;
+}
+.totals-value { font-size: 1.2rem; font-weight: 700; color: var(--text); }
+.totals-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Sort bar */
+.sort-bar {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 16px;
+}
+.sort-label { font-size: 0.8rem; color: var(--text-muted); margin-right: 4px; }
+.sort-btn {
+    padding: 4px 12px; border-radius: 4px; font-size: 0.78rem;
+    background: var(--surface2); color: var(--text-muted); text-decoration: none;
+}
+.sort-btn:hover { background: var(--border); text-decoration: none; }
+.sort-active { background: var(--accent); color: #fff; }
+
 .projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: 16px;
 }
 .project-card-link { text-decoration: none; color: inherit; display: block; }
@@ -354,7 +378,10 @@ details summary { cursor: pointer; padding: 12px 20px; font-size: 0.85rem; color
 .project-card-body { padding: 12px 20px 16px; }
 .project-card-path { font-size: 0.78rem; margin-bottom: 8px; word-break: break-all; }
 .project-card-meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; }
+.card-header-meta { display: flex; align-items: center; gap: 8px; }
+.cost-badge { font-size: 0.8rem; font-weight: 600; }
 .project-card-discussion { display: flex; gap: 6px; flex-wrap: wrap; }
+.project-card-tokens { font-size: 0.72rem; margin-top: 6px; }
 
 /* Project info bar */
 .project-dir-path {
@@ -389,6 +416,7 @@ details summary { cursor: pointer; padding: 12px 20px; font-size: 0.85rem; color
     margin-bottom: 2px;
 }
 .project-info-agents { display: flex; gap: 4px; flex-wrap: wrap; }
+.project-info-models { display: flex; gap: 4px; flex-wrap: wrap; max-width: 300px; }
 
 /* Continuous discussion feed */
 .discussion-feed {

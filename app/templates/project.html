@@ -36,10 +36,26 @@
         <span class="project-info-label">Agents</span>
         <div class="project-info-agents">
             {% for a in stats.agents or [] %}
-            <span class="badge badge-agent">{{ a.agent }} ({{ a.cnt }})</span>
+            <span class="badge badge-agent">{{ a.agent.split(' ')[0] }} ({{ a.cnt }})</span>
             {% endfor %}
         </div>
     </div>
+    <div class="project-info-item">
+        <span class="project-info-label">Models</span>
+        <div class="project-info-models">
+            {% for m in stats.models or [] %}
+            <span class="badge badge-model">{{ m.model }} ({{ m.cnt }})</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Sort bar -->
+<div class="sort-bar">
+    <span class="sort-label">Sort:</span>
+    <a href="/project/{{ project_id }}?sort=recent" class="sort-btn {% if selected_sort == 'recent' %}sort-active{% endif %}">Most Recent</a>
+    <a href="/project/{{ project_id }}?sort=cost" class="sort-btn {% if selected_sort == 'cost' %}sort-active{% endif %}">Cost</a>
+    <a href="/project/{{ project_id }}?sort=oldest" class="sort-btn {% if selected_sort == 'oldest' %}sort-active{% endif %}">Oldest</a>
 </div>
 
 <!-- Continuous discussion feed -->
@@ -64,10 +80,14 @@
                 <a href="/session/{{ s.session_id }}" class="feed-title">{{ s.title or s.goal[:100] or s.session_id[:20] }}</a>
                 <div class="feed-meta">
                     <span class="badge badge-agent">{{ s.agent or '?' }}</span>
+                    {% if s.model_name %}
+                    <span class="badge badge-model">{{ s.model_name }}</span>
+                    {% endif %}
                     <span class="text-muted">{{ s.time_created_fmt }}</span>
                     {% if s.duration %}
                     <span class="text-muted">{{ s.duration }}</span>
                     {% endif %}
+                    <span class="text-muted cost-badge">${{ "%.4f"|format(s.cost or 0) }}</span>
                     {% if s.has_discussion %}
                     <span class="badge badge-discussion-done">Summarized</span>
                     {% else %}
