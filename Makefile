@@ -1,4 +1,4 @@
-.PHONY: run run-background stop
+.PHONY: run run-background stop release-notes release-publish
 
 # Single command: starts Ollama (if needed) + uvicorn
 run:
@@ -32,3 +32,19 @@ run-background:
 # Stop background server
 stop:
 	-pkill -f "sessions-sage" 2>/dev/null; echo "stopped"
+
+# ── Release ──────────────────────────────────────────────────────────────────
+
+# Generate AI release notes draft (runs locally via Ollama)
+release-notes:
+	@PREV_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo "none"); \
+	VERSION=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	uv run python scripts/release_notes.py "$$PREV_TAG" "$$VERSION"
+
+# Publish the draft release after editing RELEASE_NOTES.md
+release-publish:
+	@VERSION=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	echo "Publishing v$$VERSION..."; \
+	gh release edit "v$$VERSION" --notes-file RELEASE_NOTES.md && \
+	gh release edit "v$$VERSION" --draft=false && \
+	echo "✅ v$$VERSION published"

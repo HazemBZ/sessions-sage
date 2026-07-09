@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['pyproject.toml']
+  workflow_dispatch: {}
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run ruff check app/
+      - run: uv build
+
+  release:
+    needs: [quality]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if release exists
+        id: check
+        run: |
+          if gh release view "v${{ steps.version.outputs.VERSION }}" &>/dev/null; then
+            echo "EXISTS=true" >> $GITHUB_OUTPUT
+          else
+            echo "EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build wheel
+        if: steps.check.outputs.EXISTS == 'false'
+        run: uv build
+
+      - name: Create draft release
+        if: steps.check.outputs.EXISTS == 'false'
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          LOG=""
+          if [ "$PREV_TAG" != "none" ]; then
+            LOG=$(git log --oneline "$PREV_TAG"..HEAD)
+          else
+            LOG=$(git log --oneline HEAD)
+          fi
+          gh release create "v${{ steps.version.outputs.VERSION }}" \
+            --title "v${{ steps.version.outputs.VERSION }}" \
+            --notes "**Changes since last release**
+
+$LOG
+
+---
+*AI release notes pending — run \`make release-notes\` locally to generate.*" \
+            --draft \
+            dist/*.whl dist/*.tar.gz
+        env:
+          GH_TOKEN: ${{ github.token }}
