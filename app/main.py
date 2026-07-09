@@ -355,7 +355,7 @@ async def digests_view(request: Request):
 @app.get("/projects", response_class=HTMLResponse)
 async def projects_list(
     request: Request,
-    sort: str = Query(default="sessions"),
+    sort: str = Query(default="recent"),
 ):
     projects = summary_db.get_projects()
     # Enrich with per-project stats
@@ -381,7 +381,7 @@ async def projects_list(
         enriched.sort(key=lambda p: -p["total_cost"])
     elif sort == "sessions":
         enriched.sort(key=lambda p: -p["session_count"])
-    elif sort == "recent":
+    else:  # recent (default)
         enriched.sort(key=lambda p: -(p.get("last_session_ts") or 0))
 
     total_cost = sum(p["total_cost"] for p in enriched)

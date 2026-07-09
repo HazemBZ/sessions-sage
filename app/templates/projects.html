@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Projects — Sessions-Sage{% endblock %}
 
+{% block head %}
+<script>
+(function() {
+    var saved = localStorage.getItem('projects_sort');
+    var current = '{{ selected_sort }}';
+    if (saved && saved !== current) {
+        window.location.href = '/projects?sort=' + encodeURIComponent(saved);
+    }
+})();
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h1>Projects</h1>
@@ -32,9 +44,9 @@
 <!-- Sort bar -->
 <div class="sort-bar">
     <span class="sort-label">Sort:</span>
-    <a href="/projects?sort=sessions" class="sort-btn {% if selected_sort == 'sessions' %}sort-active{% endif %}">Sessions</a>
-    <a href="/projects?sort=cost" class="sort-btn {% if selected_sort == 'cost' %}sort-active{% endif %}">Cost</a>
-    <a href="/projects?sort=recent" class="sort-btn {% if selected_sort == 'recent' %}sort-active{% endif %}">Recent</a>
+    <a href="/projects?sort=sessions" class="sort-btn {% if selected_sort == 'sessions' %}sort-active{% endif %}" onclick="localStorage.setItem('projects_sort','sessions')">Sessions</a>
+    <a href="/projects?sort=cost" class="sort-btn {% if selected_sort == 'cost' %}sort-active{% endif %}" onclick="localStorage.setItem('projects_sort','cost')">Cost</a>
+    <a href="/projects?sort=recent" class="sort-btn {% if selected_sort == 'recent' %}sort-active{% endif %}" onclick="localStorage.setItem('projects_sort','recent')">Recent</a>
 </div>
 
 <div class="projects-grid">
