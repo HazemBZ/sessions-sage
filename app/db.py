@@ -170,8 +170,8 @@ class SummaryDB:
         params: list[Any] = []
 
         if project_id:
-            clauses.append("project_id = ?")
-            params.append(project_id)
+            clauses.append("(project_id = ? OR (project_id = 'global' AND project_path = ?))")
+            params.extend([project_id, project_id])
         if agent:
             clauses.append("agent = ?")
             params.append(agent)
@@ -388,15 +388,32 @@ class SummaryDB:
         return sorted(aggregated.items(), key=lambda x: -x[1])
 
     def get_projects(self) -> list[tuple[str, str, int]]:
-        """Return (project_id, project_path, session_count) sorted."""
+        """Return (project_id, project_path, session_count) sorted.
+
+        Groups global sessions by actual directory path so they appear as
+        separate project entries instead of one giant "global" bucket.
+        """
         rows = self.conn.execute("""
             SELECT project_id, project_path, COUNT(*) as cnt
             FROM session_summary
-            WHERE project_id IS NOT NULL
+            WHERE project_id IS NOT NULL AND project_id != 'global'
             GROUP BY project_id
             ORDER BY cnt DESC
         """).fetchall()
-        return [(r["project_id"], r["project_path"] or "", r["cnt"]) for r in rows]
+        result = [(r["project_id"], r["project_path"] or "", r["cnt"]) for r in rows]
+
+        # Break global sessions into per-directory groups
+        global_rows = self.conn.execute("""
+            SELECT project_path, COUNT(*) as cnt
+            FROM session_summary
+            WHERE project_id = 'global' AND project_path NOT NULL AND project_path != ''
+            GROUP BY project_path
+            ORDER BY cnt DESC
+        """).fetchall()
+        for r in global_rows:
+            result.append((r["project_path"], r["project_path"], r["cnt"]))
+
+        return result
 
     def get_project_sessions(
         self, project_id: str, limit: int = 200, offset: int = 0, sort: str = "recent"
@@ -411,9 +428,10 @@ class SummaryDB:
         rows = self.conn.execute(
             f"""SELECT * FROM session_summary
                WHERE project_id = ?
+                  OR (project_id = 'global' AND project_path = ?)
                {order}
                LIMIT ? OFFSET ?""",
-            (project_id, limit, offset),
+            (project_id, project_id, limit, offset),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -429,16 +447,17 @@ class SummaryDB:
                 COALESCE(SUM(cost), 0) as total_cost,
                 SUM(CASE WHEN discussion_summary IS NOT NULL AND discussion_summary != '' THEN 1 ELSE 0 END) as discussion_done
             FROM session_summary WHERE project_id = ?
-        """, (project_id,)).fetchone()
+               OR (project_id = 'global' AND project_path = ?)
+        """, (project_id, project_id)).fetchone()
         result = dict(row) if row else {}
         agents = self.conn.execute(
-            "SELECT agent, COUNT(*) as cnt FROM session_summary WHERE project_id = ? AND agent IS NOT NULL GROUP BY agent ORDER BY cnt DESC",
-            (project_id,),
+            "SELECT agent, COUNT(*) as cnt FROM session_summary WHERE (project_id = ? OR (project_id = 'global' AND project_path = ?)) AND agent IS NOT NULL GROUP BY agent ORDER BY cnt DESC",
+            (project_id, project_id),
         ).fetchall()
         result["agents"] = [dict(a) for a in agents]
         models = self.conn.execute(
-            "SELECT model, COUNT(*) as cnt FROM session_summary WHERE project_id = ? AND model IS NOT NULL AND model != '' GROUP BY model ORDER BY cnt DESC",
-            (project_id,),
+            "SELECT model, COUNT(*) as cnt FROM session_summary WHERE (project_id = ? OR (project_id = 'global' AND project_path = ?)) AND model IS NOT NULL AND model != '' GROUP BY model ORDER BY cnt DESC",
+            (project_id, project_id),
         ).fetchall()
         import json
         model_list: list[dict[str, Any]] = []
