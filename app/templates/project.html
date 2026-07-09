@@ -48,6 +48,18 @@
             {% endfor %}
         </div>
     </div>
+    <div class="project-info-item">
+        <span class="project-info-label">Markdown Files</span>
+        {% if md_files %}
+        <div class="md-list">
+            {% for mf in md_files %}
+            <code class="file-path md-file">{{ mf }}</code>
+            {% endfor %}
+        </div>
+        {% else %}
+        <span class="text-muted">None found</span>
+        {% endif %}
+    </div>
 </div>
 
 <!-- Sort bar -->

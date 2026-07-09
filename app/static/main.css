@@ -421,6 +421,8 @@ details summary { cursor: pointer; padding: 12px 20px; font-size: 0.85rem; color
 }
 .project-info-agents { display: flex; gap: 4px; flex-wrap: wrap; }
 .project-info-models { display: flex; gap: 4px; flex-wrap: wrap; max-width: 300px; }
+.md-list { display: flex; flex-direction: column; gap: 3px; max-height: 200px; overflow-y: auto; }
+.md-file { font-size: 0.7rem; }
 
 /* Continuous discussion feed */
 .discussion-feed {

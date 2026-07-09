@@ -398,7 +398,7 @@ async def projects_list(
     })
 
 
-@app.get("/project/{project_id}", response_class=HTMLResponse)
+@app.get("/project/{project_id:path}", response_class=HTMLResponse)
 async def project_detail(
     request: Request,
     project_id: str,
@@ -432,6 +432,17 @@ async def project_detail(
         else:
             s["model_name"] = ""
 
+    md_files: list[str] = []
+    if project_name and isinstance(project_name, str):
+        proj_dir = Path(project_name)
+        if proj_dir.exists():
+            for f in sorted(proj_dir.rglob("*.md")):
+                if f.is_file():
+                    try:
+                        md_files.append(str(f.relative_to(proj_dir)))
+                    except ValueError:
+                        pass
+
     return templates.TemplateResponse(request, "project.html", {
         "sessions": sessions,
         "project_name": project_name,
@@ -444,6 +455,7 @@ async def project_detail(
             "first_session_fmt": _fmt_ts(pstats.get("first_session", 0)),
             "last_session_fmt": _fmt_ts(pstats.get("last_session", 0)),
         },
+        "md_files": md_files,
         "total_sessions": summary_db.count_summaries(),
     })
 
