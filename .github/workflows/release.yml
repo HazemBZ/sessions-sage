@@ -61,10 +61,10 @@ jobs:
             --title "v${{ steps.version.outputs.VERSION }}" \
             --notes "**Changes since last release**
 
-$LOG
+            $LOG
 
----
-*AI release notes pending — run \`make release-notes\` locally to generate.*" \
+            ---
+            *AI release notes pending — run \`make release-notes\` locally to generate.*" \
             --draft \
             dist/*.whl dist/*.tar.gz
         env:
