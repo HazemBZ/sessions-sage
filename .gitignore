@@ -27,3 +27,6 @@ data/
 
 # OpenCode session artifacts
 .omo/run-continuation/
+
+# Release (generated locally)
+RELEASE_NOTES.md
