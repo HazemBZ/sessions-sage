@@ -24,3 +24,6 @@ Thumbs.db
 /tmp/
 ROADMAP.yaml
 data/
+
+# OpenCode session artifacts
+.omo/run-continuation/
