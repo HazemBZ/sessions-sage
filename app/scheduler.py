@@ -41,13 +41,14 @@ def run_extraction(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> int:
             messages = extractor.get_messages(sid)
             parts = extractor.get_parts(sid)
 
-            # resolve project path from worktree column
             project_path = None
             pid = ses.get("project_id")
-            if pid:
-                proj = extractor.get_project(pid) if pid != "global" else {"worktree": "/"}
+            if pid and pid != "global":
+                proj = extractor.get_project(pid)
                 if proj:
                     project_path = proj.get("worktree") or None
+            else:
+                project_path = ses.get("directory") or None
 
             from app.summarizer import summarize_session
             summary = summarize_session(ses, messages, parts, project_path)
@@ -165,10 +166,12 @@ def run_initial_import(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> i
 
             project_path = None
             pid = ses.get("project_id")
-            if pid:
-                proj = extractor.get_project(pid) if pid != "global" else {"worktree": "/"}
+            if pid and pid != "global":
+                proj = extractor.get_project(pid)
                 if proj:
                     project_path = proj.get("worktree") or None
+            else:
+                project_path = ses.get("directory") or None
 
             from app.summarizer import summarize_session
             summary = summarize_session(ses, messages, parts, project_path)
