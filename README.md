@@ -60,3 +60,12 @@ Opens at `http://localhost:8099`.
 ## Project status
 
 Active development.
+
+## Releases
+
+See [RELEASE.md](RELEASE.md) for the release process — CI automation + local AI-generated release notes via Ollama.
+
+```bash
+make release-notes   # generate draft notes locally
+make release-publish # publish after review
+```
