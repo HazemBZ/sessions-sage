@@ -8,7 +8,11 @@ If no args given, reads previous tag via `git describe` and version from pyproje
 Writes RELEASE_NOTES.md, prints result to stdout.
 """
 
-import subprocess, sys, httpx, re, os
+import subprocess
+import sys
+import httpx
+import re
+import os
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -120,7 +124,7 @@ def main():
         sys.exit(1)
 
     ctx = gather_context(prev_tag)
-    commit_count = len([l for l in ctx["log"].split("\n") if l.strip()])
+    commit_count = len([line for line in ctx["log"].split("\n") if line.strip()])
     print(f"📝 {commit_count} commits since {prev_tag}")
 
     notes = generate_notes(version, ctx)
@@ -133,8 +137,8 @@ def main():
     print("─" * 50)
     print(notes)
     print("─" * 50)
-    print(f"\n📋 Review and edit the notes, then publish:")
-    print(f"   $EDITOR RELEASE_NOTES.md")
+    print("\n📋 Review and edit the notes, then publish:")
+    print("   $EDITOR RELEASE_NOTES.md")
     print(f"   make release-publish  # or: gh release edit v{version} --notes-file RELEASE_NOTES.md --draft=false")
 
 
