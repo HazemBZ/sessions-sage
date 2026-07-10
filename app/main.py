@@ -397,6 +397,42 @@ async def projects_list(
     })
 
 
+_EXCLUDED_MD_DIRS = frozenset({
+    ".venv", ".git", "node_modules", "__pycache__", ".codegraph",
+    ".omo", ".cache", "venv", "dist", "build", ".egg-info",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+})
+
+
+def _scan_md_files(project_path: str, max_files: int = 50) -> list[str]:
+    """Scan project for markdown files, skipping common non-source dirs.
+
+    Limits to `max_files` to avoid crawling massive directory trees
+    (e.g. /home/harozien/.venv).
+    """
+    proj_dir = Path(project_path)
+    if not proj_dir.exists():
+        return []
+    result: list[str] = []
+    try:
+        for entry in proj_dir.iterdir():
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if entry.name in _EXCLUDED_MD_DIRS:
+                continue
+            for f in sorted(entry.rglob("*.md")):
+                if f.is_file() and f.parent.name not in _EXCLUDED_MD_DIRS:
+                    try:
+                        result.append(str(f.relative_to(proj_dir)))
+                    except ValueError:
+                        pass
+                    if len(result) >= max_files:
+                        return result
+    except PermissionError:
+        pass
+    return result
+
+
 @app.get("/project/{project_id:path}", response_class=HTMLResponse)
 async def project_detail(
     request: Request,
@@ -411,7 +447,6 @@ async def project_detail(
     project_name = sessions[0].get("project_path", project_id)
     project_short = project_name.split("/")[-1] if project_name else project_id
 
-    # Parse JSON fields + format timestamps
     for s in sessions:
         s["decisions_list"] = _parse_json_list(s.get("decisions"))
         s["files_changed_list"] = _parse_json_list(s.get("files_changed"))
@@ -431,16 +466,7 @@ async def project_detail(
         else:
             s["model_name"] = ""
 
-    md_files: list[str] = []
-    if project_name and isinstance(project_name, str):
-        proj_dir = Path(project_name)
-        if proj_dir.exists():
-            for f in sorted(proj_dir.rglob("*.md")):
-                if f.is_file():
-                    try:
-                        md_files.append(str(f.relative_to(proj_dir)))
-                    except ValueError:
-                        pass
+    md_files = _scan_md_files(project_name) if project_name else []
 
     return templates.TemplateResponse(request, "project.html", {
         "sessions": sessions,
@@ -455,7 +481,7 @@ async def project_detail(
             "last_session_fmt": _fmt_ts(pstats.get("last_session", 0)),
         },
         "md_files": md_files,
-        "total_sessions": summary_db.count_summaries(),
+        "total_sessions": pstats.get("total_sessions", 0),
     })
 
 

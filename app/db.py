@@ -433,7 +433,7 @@ class SummaryDB:
         return self._cached(f"digests_{limit}", ttl=60, fetcher=_fetch)
 
     def get_project_sessions(
-        self, project_id: str, limit: int = 200, offset: int = 0, sort: str = "recent"
+        self, project_id: str, limit: int = 100, offset: int = 0, sort: str = "recent"
     ) -> list[dict[str, Any]]:
         if sort == "cost":
             order = "ORDER BY cost DESC"
@@ -453,43 +453,43 @@ class SummaryDB:
         return [dict(r) for r in rows]
 
     def get_project_stats(self, project_id: str) -> dict[str, Any]:
-        row = self.conn.execute("""
-            SELECT
-                COUNT(*) as total_sessions,
-                MIN(time_created) as first_session,
-                MAX(time_created) as last_session,
-                MAX(project_path) as project_path,
-                COALESCE(SUM(tokens_input), 0) as total_tokens_input,
-                COALESCE(SUM(tokens_output), 0) as total_tokens_output,
-                COALESCE(SUM(cost), 0) as total_cost,
-                SUM(CASE WHEN discussion_summary IS NOT NULL AND discussion_summary != '' THEN 1 ELSE 0 END) as discussion_done
-            FROM session_summary WHERE project_id = ?
-               OR (project_id = 'global' AND project_path = ?)
-        """, (project_id, project_id)).fetchone()
-        result = dict(row) if row else {}
-        agents = self.conn.execute(
-            "SELECT agent, COUNT(*) as cnt FROM session_summary WHERE (project_id = ? OR (project_id = 'global' AND project_path = ?)) AND agent IS NOT NULL GROUP BY agent ORDER BY cnt DESC",
-            (project_id, project_id),
-        ).fetchall()
-        result["agents"] = [dict(a) for a in agents]
-        models = self.conn.execute(
-            "SELECT model, COUNT(*) as cnt FROM session_summary WHERE (project_id = ? OR (project_id = 'global' AND project_path = ?)) AND model IS NOT NULL AND model != '' GROUP BY model ORDER BY cnt DESC",
-            (project_id, project_id),
-        ).fetchall()
-        import json
-        model_list: list[dict[str, Any]] = []
-        seen: dict[str, int] = {}
-        for m in models:
-            try:
-                parsed = json.loads(m["model"])
-                mid = parsed.get("id", m["model"])
-                seen[mid] = seen.get(mid, 0) + m["cnt"]
-            except (json.JSONDecodeError, TypeError):
-                seen[m["model"]] = seen.get(m["model"], 0) + m["cnt"]
-        for mid, cnt in sorted(seen.items(), key=lambda x: -x[1]):
-            model_list.append({"model": mid, "cnt": cnt})
-        result["models"] = model_list
-        return result
+        where_clause = "(project_id = ? OR (project_id = 'global' AND project_path = ?))"
+        params = (project_id, project_id)
+
+        def _fetch():
+            row = self.conn.execute(f"""
+                SELECT
+                    COUNT(*) as total_sessions,
+                    MIN(time_created) as first_session,
+                    MAX(time_created) as last_session,
+                    MAX(project_path) as project_path,
+                    COALESCE(SUM(tokens_input), 0) as total_tokens_input,
+                    COALESCE(SUM(tokens_output), 0) as total_tokens_output,
+                    COALESCE(SUM(cost), 0) as total_cost,
+                    SUM(CASE WHEN discussion_summary IS NOT NULL AND discussion_summary != '' THEN 1 ELSE 0 END) as discussion_done
+                FROM session_summary WHERE {where_clause}
+            """, params).fetchone()
+            result = dict(row) if row else {}
+            agents = self.conn.execute(
+                f"SELECT agent, COUNT(*) as cnt FROM session_summary WHERE {where_clause} AND agent IS NOT NULL GROUP BY agent ORDER BY cnt DESC",
+                params,
+            ).fetchall()
+            result["agents"] = [dict(a) for a in agents]
+            model_rows = self.conn.execute(
+                f"""SELECT COALESCE(json_extract(model, '$.id'), model) as model_id, SUM(cnt) as cnt
+                    FROM (
+                        SELECT model, COUNT(*) as cnt FROM session_summary
+                        WHERE {where_clause} AND model IS NOT NULL AND model != ''
+                        GROUP BY model
+                    )
+                    GROUP BY model_id
+                    ORDER BY cnt DESC""",
+                params,
+            ).fetchall()
+            result["models"] = [{"model": r["model_id"], "cnt": r["cnt"]} for r in model_rows]
+            return result
+
+        return self._cached(f"projstats_{project_id}", ttl=30, fetcher=_fetch)
 
     def close(self) -> None:
         if self._conn:
