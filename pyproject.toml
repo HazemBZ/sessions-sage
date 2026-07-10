@@ -19,6 +19,9 @@ sage = "app.main:run"
 [tool.uv]
 package = true
 
+[dependency-groups]
+dev = ["ruff>=0.11.0"]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
