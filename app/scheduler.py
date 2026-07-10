@@ -33,7 +33,6 @@ def run_extraction(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> int:
 
     processed = 0
     max_session_id = last_id
-    import json
 
     for ses in sessions:
         sid = ses["id"]
@@ -150,8 +149,6 @@ def run_initial_import(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> i
     now = int(time.time() * 1000)
     processed = 0
     max_id = ""
-
-    import json
 
     total_available = extractor.get_session_count()
     sessions = extractor.get_recent_sessions(limit=total_available)

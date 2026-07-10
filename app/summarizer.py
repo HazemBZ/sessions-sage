@@ -112,7 +112,6 @@ def _extract_files_changed(messages: list[dict[str, Any]], parts: list[dict[str,
 
         ptype = d.get("type", "")
         if ptype == "tool":
-            tool_name = d.get("tool", "")
             call_input = d.get("state", {}).get("input", {})
             if isinstance(call_input, dict):
                 fp = call_input.get("filePath", "")
