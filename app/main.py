@@ -237,7 +237,7 @@ async def dashboard(
         "selected_project": project_id,
         "selected_agent": agent,
         "selected_model": model,
-        "total_sessions": summary_db.count_summaries(),
+        "total_sessions": stats.get("total_sessions", 0),
         "selected_discussion": discussion,
     })
 

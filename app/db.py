@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -74,10 +75,32 @@ CREATE INDEX IF NOT EXISTS idx_note_session ON reflection_note(session_id);
 class SummaryDB:
     """Local database for summaries and notes."""
 
+    # Cache TTL in seconds for expensive aggregation queries
+    _CACHE_TTL = 30
+
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
+        self._cache: dict[str, tuple[float, Any]] = {}  # key -> (expires_at, value)
+
+    def _cached(self, key: str, ttl: float | None = None, fetcher=None) -> Any:
+        """Return cached value or fetch + cache with TTL."""
+        if ttl is None:
+            ttl = self._CACHE_TTL
+        now = time.time()
+        cached = self._cache.get(key)
+        if cached and cached[0] > now:
+            return cached[1]
+        if fetcher is not None:
+            value = fetcher()
+            self._cache[key] = (now + ttl, value)
+            return value
+        return None
+
+    def invalidate_cache(self) -> None:
+        """Clear all cached aggregations. Call after data changes."""
+        self._cache.clear()
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -216,12 +239,6 @@ class SummaryDB:
         )
         self.conn.commit()
 
-    def get_daily_digests(self, limit: int = 30) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            "SELECT * FROM daily_digest ORDER BY date DESC LIMIT ?", (limit,)
-        ).fetchall()
-        return [dict(r) for r in rows]
-
     def get_daily_digest(self, date: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT * FROM daily_digest WHERE date = ?", (date,)
@@ -232,7 +249,6 @@ class SummaryDB:
 
     def add_note(self, session_id: str, note: str, tags: list[str] | None = None) -> int:
         now = int(time.time() * 1000)
-        import json
         cur = self.conn.execute(
             "INSERT INTO reflection_note (session_id, note, tags, created_at) VALUES (?, ?, ?, ?)",
             (session_id, note, json.dumps(tags or []), now),
@@ -241,7 +257,6 @@ class SummaryDB:
         return cur.lastrowid  # type: ignore[return-value]
 
     def get_notes(self, session_id: str) -> list[dict[str, Any]]:
-        import json
         rows = self.conn.execute(
             "SELECT * FROM reflection_note WHERE session_id = ? ORDER BY created_at DESC",
             (session_id,),
@@ -327,93 +342,95 @@ class SummaryDB:
                 "projects": json.dumps(projects),
             })
 
-    # ---- Stats ----
+    # ---- Stats (cached) ----
 
     def get_stats(self) -> dict[str, Any]:
-        row = self.conn.execute("""
-            SELECT
-                COUNT(*) as total_sessions,
-                COALESCE(SUM(tokens_input), 0) as total_tokens_input,
-                COALESCE(SUM(tokens_output), 0) as total_tokens_output,
-                COALESCE(SUM(cost), 0) as total_cost,
-                COALESCE(SUM(user_message_count), 0) as total_user_msgs,
-                COALESCE(SUM(assistant_message_count), 0) as total_assistant_msgs
-            FROM session_summary
-        """).fetchone()
-        stats = dict(row) if row else {}
+        def _fetch():
+            row = self.conn.execute("""
+                SELECT
+                    COUNT(*) as total_sessions,
+                    COALESCE(SUM(tokens_input), 0) as total_tokens_input,
+                    COALESCE(SUM(tokens_output), 0) as total_tokens_output,
+                    COALESCE(SUM(cost), 0) as total_cost,
+                    COALESCE(SUM(user_message_count), 0) as total_user_msgs,
+                    COALESCE(SUM(assistant_message_count), 0) as total_assistant_msgs
+                FROM session_summary
+            """).fetchone()
+            stats = dict(row) if row else {}
 
-        disc_row = self.conn.execute("""
-            SELECT
-                COUNT(*) as total
-            FROM session_summary
-        """).fetchone()
-        disc_done = self.conn.execute("""
-            SELECT COUNT(*) as cnt FROM session_summary
-            WHERE discussion_summary IS NOT NULL AND discussion_summary != ''
-        """).fetchone()
-        stats["discussion_done"] = disc_done["cnt"] if disc_done else 0
-        stats["discussion_pending"] = (disc_row["total"] if disc_row else 0) - stats["discussion_done"]
+            disc_done = self.conn.execute("""
+                SELECT COUNT(*) as cnt FROM session_summary
+                WHERE discussion_summary IS NOT NULL AND discussion_summary != ''
+            """).fetchone()
+            stats["discussion_done"] = disc_done["cnt"] if disc_done else 0
+            stats["discussion_pending"] = (stats["total_sessions"] or 0) - stats["discussion_done"]
 
-        title_m = self.conn.execute("""
-            SELECT COUNT(*) as cnt FROM session_summary
-            WHERE title IS NULL OR title = '' OR title = 'Untitled' OR title = 'Session'
-               OR title LIKE 'New session%'
-               OR title LIKE '____-__-__T%'
-               OR title LIKE '____-__-__'
-        """).fetchone()
-        stats["title_backfill_pending"] = title_m["cnt"] if title_m else 0
-        return stats
+            title_m = self.conn.execute("""
+                SELECT COUNT(*) as cnt FROM session_summary
+                WHERE title IS NULL OR title = '' OR title = 'Untitled' OR title = 'Session'
+                   OR title LIKE 'New session%'
+                   OR title LIKE '____-__-__T%'
+                   OR title LIKE '____-__-__'
+            """).fetchone()
+            stats["title_backfill_pending"] = title_m["cnt"] if title_m else 0
+            return stats
+
+        return self._cached("stats", fetcher=_fetch)
 
     def get_agents(self) -> list[tuple[str, int]]:
-        rows = self.conn.execute(
-            "SELECT agent, COUNT(*) as cnt FROM session_summary WHERE agent IS NOT NULL GROUP BY agent ORDER BY cnt DESC"
-        ).fetchall()
-        return [(r["agent"], r["cnt"]) for r in rows]
+        def _fetch():
+            rows = self.conn.execute(
+                "SELECT agent, COUNT(*) as cnt FROM session_summary WHERE agent IS NOT NULL GROUP BY agent ORDER BY cnt DESC"
+            ).fetchall()
+            return [(r["agent"], r["cnt"]) for r in rows]
+        return self._cached("agents", fetcher=_fetch)
 
     def get_models(self) -> list[tuple[str, int]]:
-        """Return (model_id, count) tuples, parsed from JSON model field."""
-        rows = self.conn.execute(
-            "SELECT model, COUNT(*) as cnt FROM session_summary WHERE model IS NOT NULL AND model != '' GROUP BY model ORDER BY cnt DESC"
-        ).fetchall()
-        import json
-        aggregated: dict[str, int] = {}
-        for r in rows:
-            try:
-                parsed = json.loads(r["model"])
-                mid = parsed.get("id", r["model"])
-                aggregated[mid] = aggregated.get(mid, 0) + r["cnt"]
-            except (json.JSONDecodeError, TypeError):
-                mid = r["model"]
-                aggregated[mid] = aggregated.get(mid, 0) + r["cnt"]
-        return sorted(aggregated.items(), key=lambda x: -x[1])
+        def _fetch():
+            rows = self.conn.execute(
+                """SELECT COALESCE(json_extract(model, '$.id'), model) as model_id, SUM(cnt) as cnt
+                   FROM (
+                       SELECT model, COUNT(*) as cnt FROM session_summary
+                       WHERE model IS NOT NULL AND model != ''
+                       GROUP BY model
+                   )
+                   GROUP BY model_id
+                   ORDER BY cnt DESC"""
+            ).fetchall()
+            return [(r["model_id"], r["cnt"]) for r in rows]
+        return self._cached("models", fetcher=_fetch)
 
     def get_projects(self) -> list[tuple[str, str, int]]:
-        """Return (project_id, project_path, session_count) sorted.
+        def _fetch():
+            rows = self.conn.execute("""
+                SELECT project_id, project_path, COUNT(*) as cnt
+                FROM session_summary
+                WHERE project_id IS NOT NULL AND project_id != 'global'
+                GROUP BY project_id
+                ORDER BY cnt DESC
+            """).fetchall()
+            result = [(r["project_id"], r["project_path"] or "", r["cnt"]) for r in rows]
 
-        Groups global sessions by actual directory path so they appear as
-        separate project entries instead of one giant "global" bucket.
-        """
-        rows = self.conn.execute("""
-            SELECT project_id, project_path, COUNT(*) as cnt
-            FROM session_summary
-            WHERE project_id IS NOT NULL AND project_id != 'global'
-            GROUP BY project_id
-            ORDER BY cnt DESC
-        """).fetchall()
-        result = [(r["project_id"], r["project_path"] or "", r["cnt"]) for r in rows]
+            global_rows = self.conn.execute("""
+                SELECT project_path, COUNT(*) as cnt
+                FROM session_summary
+                WHERE project_id = 'global' AND project_path NOT NULL AND project_path != ''
+                GROUP BY project_path
+                ORDER BY cnt DESC
+            """).fetchall()
+            for r in global_rows:
+                result.append((r["project_path"], r["project_path"], r["cnt"]))
 
-        # Break global sessions into per-directory groups
-        global_rows = self.conn.execute("""
-            SELECT project_path, COUNT(*) as cnt
-            FROM session_summary
-            WHERE project_id = 'global' AND project_path NOT NULL AND project_path != ''
-            GROUP BY project_path
-            ORDER BY cnt DESC
-        """).fetchall()
-        for r in global_rows:
-            result.append((r["project_path"], r["project_path"], r["cnt"]))
+            return result
+        return self._cached("projects", fetcher=_fetch)
 
-        return result
+    def get_daily_digests(self, limit: int = 30) -> list[dict[str, Any]]:
+        def _fetch():
+            rows = self.conn.execute(
+                "SELECT * FROM daily_digest ORDER BY date DESC LIMIT ?", (limit,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+        return self._cached(f"digests_{limit}", ttl=60, fetcher=_fetch)
 
     def get_project_sessions(
         self, project_id: str, limit: int = 200, offset: int = 0, sort: str = "recent"

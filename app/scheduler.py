@@ -70,6 +70,7 @@ def run_extraction(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> int:
     except Exception:
         logger.exception("Failed to rebuild daily digests")
 
+    summary_db.invalidate_cache()
     return processed
 
 
@@ -131,6 +132,8 @@ def run_discussion_summaries(extractor: OpenCodeExtractor, summary_db: SummaryDB
             logger.exception("Failed to summarize session %s", sid)
 
     logger.info("Discussion summaries: %d processed (pending: %d)", processed, len(pending))
+    if processed:
+        summary_db.invalidate_cache()
     return processed
 
 
@@ -189,6 +192,7 @@ def run_initial_import(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> i
 
     summary_db.update_cursor(now, max_id)
     summary_db.rebuild_daily_digests()
+    summary_db.invalidate_cache()
     logger.info("Initial import complete: %d sessions processed", processed)
     return processed
 
@@ -234,4 +238,6 @@ def run_title_backfill(extractor: OpenCodeExtractor, summary_db: SummaryDB) -> i
             logger.exception("Title backfill failed for %s", sid)
 
     logger.info("Title backfill: %d titles generated", done)
+    if done:
+        summary_db.invalidate_cache()
     return done
