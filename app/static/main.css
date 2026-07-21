@@ -543,6 +543,210 @@ details summary { cursor: pointer; padding: 12px 20px; font-size: 0.85rem; color
     align-items: center;
 }
 
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 24px;
+    padding: 12px 0;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.pagination-info {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.82rem;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s;
+}
+.pagination-btn:hover {
+    background: var(--surface2);
+    border-color: var(--accent-dim);
+}
+.pagination-btn-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+}
+.pagination-btn-active:hover {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
+}
+.pagination-btn-disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+.pagination-ellipsis {
+    padding: 0 4px;
+    color: var(--text-muted);
+}
+
+/* Conversation view */
+.conversation {
+    padding: 0;
+}
+.conv-msg {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+.conv-msg:hover {
+    background: rgba(255,255,255,0.02);
+}
+.conv-msg:last-child {
+    border-bottom: none;
+}
+.conv-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+.conv-toggle-icon {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+.conv-msg.collapsed .conv-toggle-icon {
+    transform: rotate(-90deg);
+}
+.conv-msg.collapsed .conv-parts {
+    display: none;
+}
+.conv-role-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.conv-badge-user {
+    background: rgba(108,140,255,0.15);
+    color: #8ba4ff;
+}
+.conv-badge-assistant {
+    background: rgba(74,222,128,0.15);
+    color: #4ade80;
+}
+.conv-badge-unknown {
+    background: var(--surface2);
+    color: var(--text-muted);
+}
+.conv-time {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+.conv-raw-toggle {
+    margin-left: auto;
+    font-size: 0.7rem;
+}
+.conv-raw-summary {
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--surface2);
+    display: inline-block;
+}
+.conv-raw-summary:hover {
+    background: var(--border);
+}
+.conv-raw-json {
+    font-size: 0.65rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    max-height: 300px;
+    overflow: auto;
+    margin-top: 6px;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+.conv-parts {
+    margin-left: 4px;
+}
+.conv-part-text {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.conv-part-reasoning {
+    margin-top: 4px;
+    font-size: 0.78rem;
+}
+.conv-part-reasoning > summary {
+    color: #c084fc;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 2px 0;
+}
+.conv-part-reasoning-text {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    background: rgba(192,132,252,0.06);
+    border-left: 2px solid #c084fc;
+    border-radius: 0 4px 4px 0;
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.conv-part-tool {
+    margin-top: 4px;
+    font-size: 0.78rem;
+}
+.conv-part-tool > summary {
+    color: #a78bfa;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 2px 0;
+}
+.conv-part-tool-input {
+    margin-top: 4px;
+}
+.conv-part-tool-input pre {
+    font-size: 0.7rem;
+    background: rgba(167,139,250,0.06);
+    border: 1px solid rgba(167,139,250,0.15);
+    border-radius: 4px;
+    padding: 8px;
+    max-height: 250px;
+    overflow: auto;
+    color: var(--text-muted);
+}
+
 /* Footer */
 .footer {
     margin-top: 48px;

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -250,10 +250,17 @@ async def session_detail(request: Request, session_id: str):
     # Fetch raw data if available
     raw_session = None
     raw_messages = None
+    raw_parts = None
+    raw_parts_by_msg: dict[str, list[dict[str, Any]]] = {}
     if extractor:
         try:
             raw_session = extractor.get_session(session_id)
             raw_messages = extractor.get_messages(session_id)
+            raw_parts = extractor.get_parts(session_id)
+            for p in raw_parts or []:
+                pid = p.get("message_id", "")
+                if pid:
+                    raw_parts_by_msg.setdefault(pid, []).append(p)
         except Exception:
             pass
 
@@ -278,6 +285,8 @@ async def session_detail(request: Request, session_id: str):
         "summary": summary,
         "raw_session": raw_session,
         "raw_messages": raw_messages,
+        "raw_parts": raw_parts,
+        "raw_parts_by_msg": raw_parts_by_msg,
         "notes": notes,
         "child_summaries": child_summaries,
         "discussion_summary_enabled": True,
@@ -438,13 +447,17 @@ async def project_detail(
     request: Request,
     project_id: str,
     sort: str = Query(default="recent"),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=10, le=200),
 ):
-    sessions = summary_db.get_project_sessions(project_id, sort=sort)
-    if not sessions:
-        return HTMLResponse("Project not found", status_code=404)
+    offset = (page - 1) * per_page
+    sessions = summary_db.get_project_sessions(project_id, limit=per_page, offset=offset, sort=sort)
+    if not sessions and page > 1:
+        # Page beyond available data — redirect to page 1
+        return RedirectResponse(f"/project/{project_id}?sort={sort}", status_code=302)
 
     pstats = summary_db.get_project_stats(project_id)
-    project_name = sessions[0].get("project_path", project_id)
+    project_name = sessions[0].get("project_path", project_id) if sessions else project_id
     project_short = project_name.split("/")[-1] if project_name else project_id
 
     for s in sessions:
@@ -468,6 +481,19 @@ async def project_detail(
 
     md_files = _scan_md_files(project_name) if project_name else []
 
+    total = pstats.get("total_sessions", 0)
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    # Page range for pagination controls (show ~5 pages around current)
+    window = 2
+    range_start = max(1, page - window)
+    range_end = min(total_pages, page + window)
+    if range_end - range_start < window * 2:
+        if range_start == 1:
+            range_end = min(total_pages, range_start + window * 2)
+        else:
+            range_start = max(1, range_end - window * 2)
+    page_range = list(range(range_start, range_end + 1))
+
     return templates.TemplateResponse(request, "project.html", {
         "sessions": sessions,
         "project_name": project_name,
@@ -481,7 +507,13 @@ async def project_detail(
             "last_session_fmt": _fmt_ts(pstats.get("last_session", 0)),
         },
         "md_files": md_files,
-        "total_sessions": pstats.get("total_sessions", 0),
+        "total_sessions": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "page_range": page_range,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < total_pages else None,
     })
 
 
@@ -504,6 +536,74 @@ async def api_sessions(
         search=search or None,
     )
     return {"sessions": sessions, "total": summary_db.count_summaries()}
+
+
+@app.get("/api/sessions/{session_id}/messages")
+async def api_session_messages(session_id: str):
+    """Return raw session messages + parts as JSON."""
+    if not extractor:
+        return {"error": "Extractor not available"}, 503
+
+    session = extractor.get_session(session_id)
+    if not session:
+        return {"error": "Session not found"}, 404
+
+    messages = extractor.get_messages(session_id)
+    parts = extractor.get_parts(session_id)
+
+    parts_by_msg: dict[str, list[dict[str, Any]]] = {}
+    for p in parts:
+        pid = p.get("message_id", "")
+        if pid:
+            parts_by_msg.setdefault(pid, []).append(p)
+
+    enriched: list[dict[str, Any]] = []
+    for m in messages:
+        mid = m.get("id", "")
+        msg_parts = parts_by_msg.get(mid, [])
+
+        data = m.get("data", {})
+        role = data.get("role", "unknown") if isinstance(data, dict) else "unknown"
+
+        part_summaries = []
+        for p in msg_parts:
+            pd = p.get("data", {})
+            ptype = pd.get("type", "") if isinstance(pd, dict) else ""
+            ptext = ""
+            if isinstance(pd, dict):
+                if ptype == "text":
+                    ptext = pd.get("text", "")
+                elif ptype == "reasoning":
+                    ptext = pd.get("text", "")[:500]
+                elif ptype == "tool":
+                    tool_name = pd.get("tool", "")
+                    tool_input = pd.get("state", {}).get("input", {})
+                    ptext = f"[{tool_name}] {json.dumps(tool_input, default=str)[:500]}" if tool_input else f"[{tool_name}]"
+            part_summaries.append({
+                "id": p.get("id", ""),
+                "message_id": mid,
+                "type": ptype,
+                "text": ptext,
+                "data": pd,
+            })
+
+        enriched.append({
+            "id": mid,
+            "session_id": m.get("session_id", ""),
+            "time_created": m.get("time_created", 0),
+            "role": role,
+            "part_count": len(msg_parts),
+            "parts": part_summaries,
+            "data": data,
+        })
+
+    return {
+        "session_id": session_id,
+        "session": session,
+        "message_count": len(enriched),
+        "part_count": len(parts),
+        "messages": enriched,
+    }
 
 
 # ---- CLI entry point ----

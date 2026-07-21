@@ -57,15 +57,67 @@
 
             {% if summary.files_changed_list %}
             <div class="detail-section">
-                <label>Files Changed ({{ summary.files_changed_list|length }})</label>
-                <div class="file-list">
-                    {% for f in summary.files_changed_list[:20] %}
-                    <code class="file-path">{{ f }}</code>
-                    {% endfor %}
-                </div>
+                <details>
+                    <summary><label style="display:inline">Files Changed ({{ summary.files_changed_list|length }})</label></summary>
+                    <div class="file-list" style="margin-top:8px">
+                        {% for f in summary.files_changed_list[:20] %}
+                        <code class="file-path">{{ f }}</code>
+                        {% endfor %}
+                    </div>
+                </details>
             </div>
             {% endif %}
         </div>
+
+        {% if raw_messages %}
+        <div class="card">
+            <div class="card-header">
+                <h2>Conversation</h2>
+                <span class="text-muted">{{ raw_messages|length }} messages</span>
+            </div>
+            <div class="conversation">
+                {% for msg in raw_messages %}
+                {% set msg_parts = raw_parts_by_msg.get(msg.id, []) %}
+                {% set role = msg.data.role if msg.data and msg.data.role else 'unknown' %}
+                <div class="conv-msg conv-role-{{ role }}">
+                    <div class="conv-header" onclick="toggleConvMsg(event)">
+                        <span class="conv-toggle-icon">▼</span>
+                        <span class="conv-role-badge conv-badge-{{ role }}">{{ role }}</span>
+                        <span class="conv-time">{{ msg.time_created }}</span>
+                        <details class="conv-raw-toggle" style="display:inline-block;margin-left:auto;">
+                            <summary class="conv-raw-summary">raw</summary>
+                            <pre class="conv-raw-json">{{ msg.data | tojson(indent=2) }}</pre>
+                        </details>
+                    </div>
+                    {% if msg_parts %}
+                    <div class="conv-parts">
+                        {% for p in msg_parts %}
+                        {% set pdata = p.data if p.data else {} %}
+                        {% set ptype = pdata.type if pdata.type else '' %}
+                        {% if ptype == 'text' %}
+                        <div class="conv-part-text">{{ pdata.text }}</div>
+                        {% elif ptype == 'reasoning' %}
+                        <details class="conv-part-reasoning">
+                            <summary>Reasoning</summary>
+                            <div class="conv-part-reasoning-text">{{ pdata.text }}</div>
+                        </details>
+                        {% elif ptype == 'tool' %}
+                        <details class="conv-part-tool">
+                            <summary>Tool: {{ pdata.tool or '?' }}</summary>
+                            <div class="conv-part-tool-input">
+                                {% set tool_input = pdata.state.input if pdata.state and pdata.state.input else {} %}
+                                <pre>{{ tool_input | tojson(indent=2) }}</pre>
+                            </div>
+                        </details>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Notes -->
         <div class="card">
@@ -190,28 +242,12 @@
         </div>
         {% endif %}
 
-        {% if raw_messages %}
-        <div class="card">
-            <div class="card-header">
-                <h2>Raw Messages</h2>
-                <span class="text-muted">{{ raw_messages|length }}</span>
-            </div>
-            <details>
-                <summary>View raw</summary>
-                <div class="raw-log">
-                    {% for msg in raw_messages[:10] %}
-                    <div class="raw-msg">
-                        <span class="raw-role">{{ msg.data.role or '?' }}</span>
-                        <span class="raw-time">{{ msg.time_created }}</span>
-                    </div>
-                    {% endfor %}
-                    {% if raw_messages|length > 10 %}
-                    <div class="text-muted">...and {{ raw_messages|length - 10 }} more</div>
-                    {% endif %}
-                </div>
-            </details>
-        </div>
-        {% endif %}
     </div>
 </div>
+<script>
+function toggleConvMsg(e) {
+    if (e.target.closest('details, button, a')) return;
+    e.currentTarget.closest('.conv-msg').classList.toggle('collapsed');
+}
+</script>
 {% endblock %}
